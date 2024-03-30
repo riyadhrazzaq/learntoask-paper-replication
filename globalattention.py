@@ -9,7 +9,6 @@ class Attention(nn.Module):
 
         self.projection_layer = nn.Linear(encoder_hidden_size, decoder_hidden_size)
 
-
     def forward(self, encoder_output, decoder_output):
         """
         Args:
@@ -20,11 +19,10 @@ class Attention(nn.Module):
         Returns:
             score (torch.Tensor): (N, L, 1)
         """
-        print('in attention', encoder_output.shape, decoder_output.shape)
         # => (N, L, decoder_hidden_size)
         projection = self.projection_layer(encoder_output)
         # => (N, L, 1)
-        score = projection @ decoder_output.transpose(1,2)
+        score = projection @ decoder_output.transpose(1, 2)
         score = F.softmax(score, dim=1)
 
         return score
