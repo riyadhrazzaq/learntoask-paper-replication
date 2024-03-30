@@ -153,7 +153,6 @@ class Trainer:
                 )
                 i += valid_batch_size
                 del batch
-                break
 
             bar.close()
 
