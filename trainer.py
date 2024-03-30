@@ -79,6 +79,8 @@ class Trainer:
         }
         # last successful epoch, if training is interrupted
         self.epoch = 0
+        self.best_metric = float("-inf")
+        self.should_checkpoint = False
 
     def _init_comet(self):
         common_parameters = {
@@ -106,15 +108,16 @@ class Trainer:
             self.comet_experiment.log_parameters(self.cfg)
 
     def _step(self, batch_idx, batch):
-        src, tgt = batch
+        src, tgt, _, tgt_mask = batch
 
         # tgt <eos> should not be a prompt
         logits, scores = self.model(src, tgt[:, :-1])
 
         logits = torch.cat(logits, dim=0).view(logits[0].size(0), -1, logits[0].size(1))
 
-        # tgt <sos> should not be considered because we have never predicted that
-        loss = F.cross_entropy(logits.transpose(1, 2), tgt[:, 1:])
+        # tgt <sos> should not be considered for loss because we have never predicted that
+        loss = F.cross_entropy(logits.transpose(1, 2), tgt[:, 1:], reduction="none")
+        loss = loss.masked_select(tgt_mask[:, 1:]).mean()
 
         return loss, logits
 
@@ -133,7 +136,8 @@ class Trainer:
 
         with torch.no_grad():
             i = 0
-            for batch in self.validation_dataloader:
+            bar = tqdm(self.validation_dataloader, leave=False)
+            for batch in bar:
                 # calculate loss on valid
                 loss, logits = self._step(i, batch)
                 validation_loss_across_batches.append(loss.item())
@@ -151,9 +155,15 @@ class Trainer:
                 del batch
                 break
 
+            bar.close()
+
         # this line is executed updated for each epoch
         self.history["validation_loss"].append(mean(validation_loss_across_batches))
         self.history["validation_metric"].append(mean(validation_metric_across_batches))
+
+        if self.history["validation_metric"][-1] > self.best_metric:
+            self.best_metric = self.history["validation_metric"][-1]
+            self.should_checkpoint = True
 
     def fit(self, num_epoch: int, print_interval=1):
         """
@@ -215,7 +225,7 @@ class Trainer:
             if epoch % print_interval == 0:
                 self._log(epoch_starts_at)
 
-            if self.enable_checkpoint:
+            if self.enable_checkpoint and self.should_checkpoint:
                 self._save_checkpoint()
 
         self._close_comet()
@@ -285,9 +295,7 @@ class Trainer:
         print(f"Loss: {test_loss},\tMetric: {metric}")
 
     def _get_model_path(self):
-        return (
-            self.checkpoint_dir / f"model_lr{self.lr}_bs{self.bs}_epoch{self.epoch}.pt"
-        )
+        return self.checkpoint_dir / f"model_lr{self.lr}_best.pt"
 
     def _save_checkpoint(self):
         if not os.path.exists(self.checkpoint_dir):

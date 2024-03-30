@@ -44,7 +44,8 @@ class Tokenizer:
             # recalculate because it might be less than max_seq
             text_tensor[i, : len(token_ids)] = torch.tensor(token_ids)
 
-        return text_tensor
+        mask = text_tensor != self.pad_index
+        return text_tensor, mask
 
     def decode(self, token_ids: torch.Tensor, keep_specials=True):
         text = []
