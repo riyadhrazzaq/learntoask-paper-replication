@@ -5,6 +5,8 @@ import torch.nn.functional as F
 
 from globalattention import Attention
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 class Encoder(nn.Module):
     def __init__(
@@ -144,7 +146,9 @@ class Seq2SeqEncoderDecoder(nn.Module):
         c = c[:1]
         generated_seq = [
             torch.tensor(
-                [self.sos_index for _ in range(source.size(0))], dtype=torch.long
+                [self.sos_index for _ in range(source.size(0))],
+                dtype=torch.long,
+                device=device,
             )
         ]
 

@@ -144,7 +144,7 @@ class Trainer:
 
                 # generate tokens from valid for bleu
                 token_ids, _ = self.model.generate(
-                    batch[0], max_seq=self.cfg["tgt_max_seq"]
+                    batch[0].to(device), max_seq=self.cfg["tgt_max_seq"]
                 )
                 validation_metric_across_batches.append(
                     self._bleu(
