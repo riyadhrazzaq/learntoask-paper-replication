@@ -108,6 +108,8 @@ def fit(
 
             loss.backward()
 
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5)
+
             optimizer.step()
             lr_scheduler.step()
 
@@ -138,5 +140,5 @@ def fit(
 
 def log(epoch, history):
     print(
-        f"Epoch: {epoch},\tVal Loss: {history['loss/valid']},\tVal Loss: {history['loss/valid']}\tVal Perplexity: {history['pplx/valid']}"
+        f"Epoch: {epoch},\tTrain Loss: {history['loss/train']},\tVal Loss: {history['loss/valid']}\tVal Perplexity: {history['pplx/valid']}"
     )
