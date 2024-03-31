@@ -62,9 +62,8 @@ def validation(model, valid_dl, max_step):
 
 
 def masked_loss(logits, tgt, mask):
-    # tgt <sos> should not be considered for loss because we have never predicted that
-    loss = F.cross_entropy(logits.transpose(1, 2), tgt[:, 1:], reduction="none")
-    loss = loss.masked_select(mask[:, 1:]).mean()
+    loss = F.cross_entropy(logits.transpose(1, 2), tgt, reduction="none")
+    loss = loss.masked_select(mask).mean()
     return loss
 
 
@@ -72,7 +71,7 @@ def step(model, batch):
     src, tgt, _, tgt_mask = batch
 
     # tgt <eos> should not be a prompt
-    logits, scores = model(src, tgt[:, :-1])
+    logits, scores = model(src, tgt)
     logits = torch.cat(logits, dim=0).view(logits[0].size(0), -1, logits[0].size(1))
     loss = masked_loss(logits, tgt, tgt_mask)
     return loss, logits
