@@ -108,6 +108,7 @@ class Seq2SeqEncoderDecoder(nn.Module):
         eos_index,
         hidden_dim=8,
         bidirectional=True,
+        num_layers=2,
     ):
 
         super().__init__()
@@ -115,18 +116,30 @@ class Seq2SeqEncoderDecoder(nn.Module):
         self.pad_index = pad_index
         self.eos_index = eos_index
 
+        self.num_layers = num_layers
+
         self.embedding = nn.Embedding.from_pretrained(embedding_vector)
         self.encoder = Encoder(
-            vocab_size, self.embedding, embedding_dim, hidden_dim, bidirectional
+            vocab_size,
+            self.embedding,
+            embedding_dim,
+            hidden_dim,
+            bidirectional,
+            num_layers,
         )
         self.decoder = Decoder(
-            vocab_size, self.embedding, embedding_dim, hidden_dim, bidirectional
+            vocab_size,
+            self.embedding,
+            embedding_dim,
+            hidden_dim,
+            bidirectional,
+            num_layers,
         )
 
     def forward(self, source, target):
         encoder_out, (h, c) = self.encoder(source)
-        h = h[:1]
-        c = c[:1]
+        h = h[: self.num_layers]
+        c = c[: self.num_layers]
         max_seq = target.size(1)
         logits = []
         scores = []
@@ -142,8 +155,9 @@ class Seq2SeqEncoderDecoder(nn.Module):
 
     def generate(self, source, max_seq=10):
         encoder_out, (h, c) = self.encoder(source)
-        h = h[:1]
-        c = c[:1]
+        h = h[: self.num_layers]
+        c = c[: self.num_layers]
+
         generated_seq = [
             torch.tensor(
                 [self.sos_index for _ in range(source.size(0))],

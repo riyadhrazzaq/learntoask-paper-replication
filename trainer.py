@@ -12,8 +12,6 @@ import os
 from nltk.translate.bleu_score import corpus_bleu
 from tqdm import tqdm
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
 class Trainer:
     def __init__(
@@ -33,6 +31,7 @@ class Trainer:
         cfg: dict = None,
         validation_data: List[str] = None,
         tokenizer=None,
+        lr_scheduler=None,
     ):
         """
         Initialize the Trainer object.
@@ -50,9 +49,10 @@ class Trainer:
         limit_train_batch (Optional[int], optional): The maximum batch size allowed for training. If set, the training dataloader will be truncated if the batch size exceeds this limit. Defaults to None.
 
         """
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.model = model
-        self.model.to(device)
+        self.model.to(self.device)
         self.optimizer = optimizer
         self.checkpoint_dir = Path(checkpoint_dir)
         self.num_classes = num_classes
@@ -81,6 +81,8 @@ class Trainer:
         self.epoch = 0
         self.best_metric = float("-inf")
         self.should_checkpoint = False
+        self.validation_metric_name = "pplx"
+        self.lr_scheduler = lr_scheduler
 
     def _init_comet(self):
         common_parameters = {
@@ -107,6 +109,12 @@ class Trainer:
         if self.cfg:
             self.comet_experiment.log_parameters(self.cfg)
 
+    def _masked_loss(self, logits, tgt, mask):
+        # tgt <sos> should not be considered for loss because we have never predicted that
+        loss = F.cross_entropy(logits.transpose(1, 2), tgt[:, 1:], reduction="none")
+        loss = loss.masked_select(mask[:, 1:]).mean()
+        return loss
+
     def _step(self, batch_idx, batch):
         src, tgt, _, tgt_mask = batch
 
@@ -115,15 +123,15 @@ class Trainer:
 
         logits = torch.cat(logits, dim=0).view(logits[0].size(0), -1, logits[0].size(1))
 
-        # tgt <sos> should not be considered for loss because we have never predicted that
-        loss = F.cross_entropy(logits.transpose(1, 2), tgt[:, 1:], reduction="none")
-        loss = loss.masked_select(tgt_mask[:, 1:]).mean()
-
-        return loss, logits
+        return self._masked_loss(logits, tgt, tgt_mask), logits
 
     def _bleu(self, token_ids, references):
         hypotheses = self.tokenizer.decode(token_ids, keep_specials=False)
         return corpus_bleu(references, hypotheses)
+
+    def _pplx(self, logits, tgt, mask):
+        loss = self._masked_loss(logits, tgt, mask)
+        return torch.exp(loss)
 
     def _validation(self):
         if not self.validation_dataloader:
@@ -135,23 +143,19 @@ class Trainer:
         valid_batch_size = self.validation_dataloader.batch_size
 
         with torch.no_grad():
-            i = 0
             bar = tqdm(self.validation_dataloader, leave=False)
             for batch in bar:
+                batch = [data.to(self.device) for data in batch]
+
                 # calculate loss on valid
-                loss, logits = self._step(i, batch)
+                loss, logits = self._step(0, batch)
                 validation_loss_across_batches.append(loss.item())
 
                 # generate tokens from valid for bleu
-                token_ids, _ = self.model.generate(
-                    batch[0].to(device), max_seq=self.cfg["tgt_max_seq"]
-                )
                 validation_metric_across_batches.append(
-                    self._bleu(
-                        token_ids, self.validation_data[i : i + valid_batch_size]
-                    )
+                    self._pplx(logits, batch[1], batch[3]).item()
                 )
-                i += valid_batch_size
+
                 del batch
 
             bar.close()
@@ -193,12 +197,14 @@ class Trainer:
 
             # forward and backward
             for batch_no, batch in enumerate(bar):
+                batch = [data.to(self.device) for data in batch]
                 self.optimizer.zero_grad()
 
                 loss, _ = self._step(-1, batch)
 
                 loss.backward()
                 self.optimizer.step()
+                self.lr_scheduler.step()
 
                 loss_across_batches.append(loss.item())
 
@@ -250,12 +256,14 @@ class Trainer:
                 {
                     "train/loss": self.history["training_loss"][-1],
                     "val/loss": self.history["validation_loss"][-1],
-                    "val/bleu": self.history["validation_metric"][-1],
+                    f"val/{self.validation_metric_name}": self.history[
+                        "validation_metric"
+                    ][-1],
                 },
                 epoch=self.epoch,
             )
 
-    def test(self, dataloader):
+    def test(self, dataloader, data: List[str]):
         """
         Tests the model on the specified dataloader.
 
@@ -266,32 +274,51 @@ class Trainer:
 
         bar = tqdm(dataloader)
         loss_across_batches = []
-        metric_across_batches = []
+        pplx_across_batches = []
+        bleu_across_batches = []
 
         self.model.eval()
         with torch.no_grad():
+            i = 0
+            batch_size = dataloader.batch_size
+
             for batch in bar:
+                batch = [data.to(self.device) for data in batch]
+                references = data[i : i + batch_size]
                 loss, logits = self._step(-1, batch)
 
                 loss_across_batches.append(loss.item())
-                metric_across_batches.append(self._f1(logits, batch[1]).item())
-
-                # show each batch loss in tqdm bar
-                bar.set_postfix(
-                    **{"loss": loss.item(), "metric": metric_across_batches[-1]}
+                pplx_across_batches.append(
+                    self._pplx(logits, batch[1], batch[3]).item()
                 )
+
+                # calculate batch bleu
+                token_ids, _ = self.model.generate(
+                    batch[0], max_seq=self.cfg["tgt_max_seq"]
+                )
+                bleu_across_batches.append(self._bleu(token_ids, references))
+
+                bar.set_postfix(
+                    **{
+                        "loss": loss.item(),
+                        "pplx": pplx_across_batches[-1],
+                        "bleu": bleu_across_batches[-1],
+                    }
+                )
+
+                i += batch_size
                 del batch
 
-        metric = mean(metric_across_batches)
-        test_loss = mean(loss_across_batches)
+        pplx = mean(pplx_across_batches)
+        bleu = mean(bleu_across_batches)
+        loss = mean(loss_across_batches)
 
+        log_dict = {"pplx": pplx, "bleu": bleu, "loss": loss}
         if self.enable_comet:
             self._init_comet()
-            self.comet_experiment.log_others(
-                {"test_f1_micro": metric, "test_loss": test_loss}
-            )
+            self.comet_experiment.log_others(log_dict)
 
-        print(f"Loss: {test_loss},\tMetric: {metric}")
+        print(log_dict)
 
     def _get_model_path(self):
         return self.checkpoint_dir / f"model_lr{self.lr}_best.pt"
