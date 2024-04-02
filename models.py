@@ -3,7 +3,7 @@ import torchtext
 from torch import nn
 import torch.nn.functional as F
 
-from globalattention import Attention
+from attention import Attention
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -11,7 +11,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class Encoder(nn.Module):
     def __init__(
         self,
-        vocab_size,
         embedding,
         embedding_dim,
         hidden_dim=8,
@@ -28,6 +27,7 @@ class Encoder(nn.Module):
                 batch_first=True,
                 bidirectional=bidirectional,
                 num_layers=num_layers,
+                dropout=0.3 if num_layers > 1 else 0.0,
             ),
         )
 
@@ -38,7 +38,7 @@ class Encoder(nn.Module):
         """
         # encoder_representation (N, Ls, d), hT => cT => (#direction * #layer, N, d) : hidden states from the last timestep
         encoder_out, (last_hidden_state, last_cell_state) = self.encoder(src)
-        return encoder_out, (last_hidden_state, last_cell_state)
+        return encoder_out, last_hidden_state
 
 
 class Decoder(nn.Module):
@@ -59,12 +59,8 @@ class Decoder(nn.Module):
             batch_first=True,
             bidirectional=False,
             num_layers=num_layers,
+            dropout=0.3 if num_layers > 1 else 0.0,
         )
-
-        # self.attn_layer = nn.Linear(
-        #     in_features=hidden_dim * 2 if bidirectional else hidden_dim,
-        #     out_features=hidden_dim * 2 if bidirectional else hidden_dim,
-        # )
 
         self.attention = Attention(
             hidden_dim * 2 if encoder_bidirectional else hidden_dim, hidden_dim
@@ -94,10 +90,10 @@ class Decoder(nn.Module):
         # => (N, vocab_size)
         logit = self.decoder_linear(concatenated)
 
-        return logit, (ht, ct), score
+        return logit, (ht, ct)
 
 
-class Seq2SeqEncoderDecoder(nn.Module):
+class Seq2Seq(nn.Module):
     def __init__(
         self,
         vocab_size,
@@ -115,12 +111,14 @@ class Seq2SeqEncoderDecoder(nn.Module):
         self.sos_index = sos_index
         self.pad_index = pad_index
         self.eos_index = eos_index
+        self.vocab_size = vocab_size
 
         self.num_layers = num_layers
-
-        self.embedding = nn.Embedding.from_pretrained(embedding_vector)
+        if embedding_vector is None:
+            self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        else:
+            self.embedding = nn.Embedding.from_pretrained(embedding_vector)
         self.encoder = Encoder(
-            vocab_size,
             self.embedding,
             embedding_dim,
             hidden_dim,
@@ -137,41 +135,114 @@ class Seq2SeqEncoderDecoder(nn.Module):
         )
 
     def forward(self, source, target):
-        encoder_out, (h, c) = self.encoder(source)
+        encoder_out, h = self.encoder(source)
         h = h[: self.num_layers]
-        c = c[: self.num_layers]
+        c = torch.randn_like(h, device=device)
         max_seq = target.size(1)
+        decoder_input = torch.full(
+            (source.size(0), 1), self.sos_index, device=device, dtype=torch.long
+        )
         logits = []
-        scores = []
 
-        for timestep in range(max_seq):
-            logit, (h, c), score = self.decoder(
-                encoder_out, target[:, timestep].unsqueeze(dim=1), h, c
-            )
+        for t in range(max_seq):
+            logit, (h, c) = self.decoder(encoder_out, decoder_input, h, c)
+            decoder_input = target[:, t].view(-1, 1)
             logits.append(logit)
-            scores.append(score)
 
-        return logits, scores
+        return torch.stack(logits, dim=1)
 
-    def generate(self, source, max_seq=10):
-        encoder_out, (h, c) = self.encoder(source)
+    def generate_batch(self, source, method="greedy", max_seq=15):
+        encoder_out, h = self.encoder(source)
         h = h[: self.num_layers]
-        c = c[: self.num_layers]
+        c = torch.randn_like(h, device=device)
 
-        generated_seq = [
-            torch.tensor(
-                [self.sos_index for _ in range(source.size(0))],
-                dtype=torch.long,
-                device=device,
-            )
-        ]
+        decoder_input = torch.full(
+            (source.size(0), 1), self.sos_index, device=device, dtype=torch.long
+        )
+        logits = []
+        outputs = torch.full(
+            (source.size(0), max_seq), self.pad_index, device=device, dtype=torch.long
+        )
 
-        scores = []
-        for timestep in range(max_seq):
-            target = generated_seq[-1].view(-1, 1)
-            logit, (h, c), score = self.decoder(encoder_out, target, h, c)
-            scores.append(score)
+        for t in range(max_seq):
+            logit, (h, c) = self.decoder(encoder_out, decoder_input, h, c)
+            print(logit.shape)
             most_probable_tokens = torch.max(logit, dim=1)[1]
-            generated_seq.append(most_probable_tokens)
+            outputs[:, t] = most_probable_tokens
+            decoder_input = most_probable_tokens.view(-1, 1)
 
-        return torch.concat(generated_seq, dim=0).view(source.size(0), -1), scores
+        return outputs
+
+    def beam_generate(self, source, k=3, max_seq=15, stop_at_eos=True):
+        assert source.size(0) == 1, "currently only supports single sample"
+        # initialize state trackers
+        probs = torch.ones((k,))
+        prefix = [[self.sos_index for _ in range(k)]]
+
+        encoder_out, h = self.encoder(source)
+        h = h[: self.num_layers]
+        c = torch.randn_like(h, device=device)
+
+        decoder_input = torch.full(
+            (source.size(0), 1), self.sos_index, device=device, dtype=torch.long
+        )
+
+        # generate first candidates at t=0
+        logit, (h, c) = self.decoder(encoder_out, decoder_input, h, c)
+        logit = logit.detach()
+        # with <SOS> as input and k=2, we have top next tokens A, C
+        # and their probability P(A), P(C) but they are still not valid
+        # prefix as we don't know which one of them will lead to top k
+        # probability in the next timestep
+        candidate_probs, candidate_prefix = torch.topk(logit, k=k)
+
+        # till now, we have hidden state for one <SOS> token
+        # duplicate that for the next k candidates
+        h = h.tile(dims=(1, k, 1))
+        c = c.tile(dims=(1, k, 1))
+
+        for t in range(1, max_seq):
+            # decoder inputs are A, C
+            decoder_input = candidate_prefix.view(-1, 1)
+            # logits => (k, vocab)
+            logit, (h, c) = self.decoder(encoder_out, decoder_input, h, c)
+            # turn into probabilities
+            pred_probs = F.softmax(logit, dim=1)
+            # multiply A's probability with the predictions where it was outcome
+            # same of B as well
+            pred_probs = pred_probs.detach() * candidate_probs.unsqueeze(dim=1)
+
+            # to select top k among all the predictions, flatten the prediction
+            # probabilities, the shape will be (k*vocab_size, 1)
+            pred_probs = pred_probs.flatten()
+            k_probs, k_ids = torch.topk(pred_probs, k=k)
+            # when flattened,
+            # k_ids % vocab_size will give the candidate token index and
+            # k_ids // vocab_size will give the prefix index
+            prefix_idx = k_ids // self.vocab_size
+            k_token_ids = k_ids % self.vocab_size
+
+            # store the prefix that produced one of the top k next token
+            # if one prefix led to multiple next tokens, it will be repeated
+            prefix.append(candidate_prefix[prefix_idx].tolist())
+            probs = candidate_probs[prefix_idx] * probs
+
+            # these are the new beam members
+            candidate_prefix = k_token_ids
+            candidate_probs = k_probs
+
+            # stop at eos
+            if stop_at_eos:
+                for i in range(k):
+                    if k_token_ids[i] == self.eos_index:
+                        result = [prefix[j][i] for j in range(len(prefix))] + [
+                            self.eos_index,
+                        ]
+                        prob = probs[i] * k_probs[i]
+                        return result, prob
+
+        # reorganize the output prefix
+        i = probs.argmax()
+        result = [prefix[j][i] for j in range(len(prefix))]
+
+        return torch.tensor(result).view(1, -1), probs[i]

@@ -1,16 +1,37 @@
+from pathlib import Path
+import io
+import os
+from typing import List
+from statistics import mean
+
+# these are utility scripts
+import datahandler as dh
+from tokenization import Tokenizer
+
 import torch
 from torch import nn
 import torch.nn.functional as F
-from datetime import datetime
-from pathlib import Path
-from statistics import mean
-from typing import List
-import comet_ml
-import time
-import os
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+import torchtext
+from torchtext.vocab import build_vocab_from_iterator, GloVe
+
+import numpy as np
+import matplotlib.pyplot as plt
 from tqdm import tqdm
+from nltk.translate.bleu_score import corpus_bleu
+
+import neptune
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def masked_cross_entropy(hypotheses, reference, mask):
+    crossEntropy = torch.nn.functional.cross_entropy(
+        hypotheses.transpose(1, 2), reference, reduction="none"
+    )
+    loss = crossEntropy.masked_select(mask).mean()
+    loss = loss.to(device)
+    return loss
 
 
 def save_checkpoint(model, optimizer, epoch, lr_scheduler, checkpoint_dir):
@@ -24,7 +45,7 @@ def save_checkpoint(model, optimizer, epoch, lr_scheduler, checkpoint_dir):
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "lr_scheduler": lr_scheduler.state_dict(),
+            "lr_scheduler_state_dict": lr_scheduler.state_dict(),
         },
         path,
     )
@@ -62,18 +83,13 @@ def validation(model, valid_dl, max_step):
 
 
 def masked_loss(logits, tgt, mask):
-    # tgt <sos> should not be considered for loss because we have never predicted that
-    loss = F.cross_entropy(logits.transpose(1, 2), tgt[:, 1:], reduction="none")
-    loss = loss.masked_select(mask[:, 1:]).mean()
-    return loss
+    return masked_cross_entropy(logits, tgt, mask)
 
 
 def step(model, batch):
     src, tgt, _, tgt_mask = batch
 
-    # tgt <eos> should not be a prompt
-    logits, scores = model(src, tgt[:, :-1])
-    logits = torch.cat(logits, dim=0).view(logits[0].size(0), -1, logits[0].size(1))
+    logits = model(src, tgt)
     loss = masked_loss(logits, tgt, tgt_mask)
     return loss, logits
 
@@ -85,18 +101,30 @@ def fit(
     valid_dl: torch.utils.data.DataLoader,
     tokenizer,
     config: dict,
-    max_epoch=10,
     lr_scheduler=None,
     checkpoint_dir="./checkpoint",
-    max_step=None,
+    max_step=-1,
     validation_data: List[str] = None,
+    experiment_name=None,
 ):
+    if enable_neptune:
+        run = neptune.init_run(
+            project="riyadhrazzaq/learning-to-ask",
+            name=experiment_name,
+            api_token=secret_value_0,
+        )
+        run["parameters"] = config
 
     best_pplx = float("-inf")
 
-    history = {"loss/train": [], "pplx/valid": [], "loss/valid": []}
+    history = {
+        "loss/train": [],
+        "pplx/valid": [],
+        "loss/valid": [],
+        "train/epoch/lr": [],
+    }
 
-    for epoch in range(1, max_epoch + 1):
+    for epoch in range(1, config["max_epoch"] + 1):
         model.train()
         loss_across_batches = []
         bar = tqdm(train_dl, unit="batch")
@@ -109,36 +137,45 @@ def fit(
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5)
-
             optimizer.step()
-            lr_scheduler.step()
 
             loss_across_batches.append(loss.item())
 
             # show each batch loss in tqdm bar
             bar.set_postfix(**{"loss": loss.item()})
+            if enable_neptune:
+                run["train/batch/loss"].append(loss.item())
 
             # skip training on the entire training dataset
             if step_no == max_step:
                 break
 
-            # free memory
-            del batch
-
+        lr_scheduler.step()
         validation_metrics = validation(model, valid_dl, max_step)
 
-        history["loss/train"] = mean(loss_across_batches)
-        history["loss/valid"] = validation_metrics["loss"]
-        history["pplx/valid"] = validation_metrics["pplx"]
+        history["loss/train"].append(mean(loss_across_batches))
+        history["loss/valid"].append(validation_metrics["loss"])
+        history["pplx/valid"].append(validation_metrics["pplx"])
+        history["train/epoch/lr"].append(lr_scheduler.get_last_lr()[0])
 
         if validation_metrics["pplx"] > best_pplx:
             best_pplx = validation_metrics["pplx"]
             save_checkpoint(model, optimizer, epoch, lr_scheduler, checkpoint_dir)
+            print("🎉 best pplx reached, saved a checkpoint :)")
 
-        log(epoch, history)
+        log(epoch, history, run if enable_neptune else None)
+
+    if enable_neptune:
+        run.stop()
 
 
-def log(epoch, history):
+def log(epoch, history, run):
+    if enable_neptune:
+        run["train/epoch/loss"].append(history["loss/train"][-1])
+        run["valid/epoch/pplx"].append(history["pplx/valid"][-1])
+        run["valid/epoch/loss"].append(history["loss/valid"][-1])
+        run["train/epoch/lr"].append(history["train/epoch/lr"][-1])
+
     print(
-        f"Epoch: {epoch},\tTrain Loss: {history['loss/train']},\tVal Loss: {history['loss/valid']}\tVal Perplexity: {history['pplx/valid']}"
+        f"Epoch: {epoch},\tTrain Loss: {history['loss/train'][-1]},\tVal Loss: {history['loss/valid'][-1]}\tVal Perplexity: {history['pplx/valid'][-1]}\tLR: {history['train/epoch/lr'][-1]}"
     )
