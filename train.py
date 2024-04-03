@@ -100,6 +100,7 @@ def main():
     )
     parser.add_argument("--max_epoch", type=int, default=15, help="Number of epochs.")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size.")
+
     parser.add_argument(
         "--max_step", type=int, default=float("inf"), help="Number of steps per epoch"
     )
@@ -138,6 +139,7 @@ def prepare_config(args):
         "lr": args.lr,
         "clip_norm": args.clip_norm,
         "max_epoch": args.max_epoch,
+        "max_step": args.max_step,
         "src_max_seq": args.src_max_seq,
         "tgt_max_seq": args.tgt_max_seq,
         "train_glove": args.train_glove,
@@ -180,7 +182,7 @@ def run(args):
         config,
         args,
         lr_scheduler,
-        max_step=args.max_step,
+        max_step=config["max_step"],
         experiment_name=args.experiment_name,
         epoch=epoch,
     )
