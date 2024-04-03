@@ -178,7 +178,7 @@ class Seq2Seq(nn.Module):
     def beam_generate(self, source, k=3, max_seq=15, stop_at_eos=True):
         assert source.size(0) == 1, "currently only supports single sample"
         # initialize state trackers
-        probs = torch.ones((k,))
+        probs = torch.ones((k,), device=device)
         prefix = [[self.sos_index for _ in range(k)]]
 
         encoder_out, h = self.encoder(source)
