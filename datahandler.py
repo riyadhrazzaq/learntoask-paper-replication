@@ -60,7 +60,7 @@ def get_data_loader(
     src_file: Union[str, Path],
     tgt_file: Union[str, Path],
     tokenizer: Tokenizer,
-    config=dict,
+    config: dict,
     shuffle=False,
 ):
     with open(src_file) as f:
@@ -81,16 +81,21 @@ def get_data_loader(
 
 def load_or_build_models(args, config, vocab):
     # load embedding vector
-    if args.embedding_vector_path and Path(args.embedding_vector_path).is_file():
-        glove = torch.load(args.embedding_vector_path)
+    if args.checkpoint:
+        # if a checkpoint exists, don't bother wasting time on glove
+        # the checkpoint already has the valid embedding weights
+        embedding_vector = torch.zeros(size=(len(vocab), config["embedding_dim"]))
     else:
-        glove = GloVe(
-            name="840B", dim=config["embedding_dim"], cache=args.glove_embedding_dir
-        )
+        if args.embedding_vector_path and Path(args.embedding_vector_path).is_file():
+            glove = torch.load(args.embedding_vector_path)
+        else:
+            glove = GloVe(
+                name="840B", dim=config["embedding_dim"], cache=args.glove_embedding_dir
+            )
 
-    embedding_vector = torch.zeros(size=(len(vocab), config["embedding_dim"]))
-    for index in range(len(vocab)):
-        embedding_vector[index] = glove[vocab.lookup_token(index)]
+        embedding_vector = torch.zeros(size=(len(vocab), config["embedding_dim"]))
+        for index in range(len(vocab)):
+            embedding_vector[index] = glove[vocab.lookup_token(index)]
 
     model = Seq2Seq(
         len(vocab),
@@ -111,9 +116,9 @@ def load_or_build_models(args, config, vocab):
 
     # load if already exists
     epoch = 0
-    if args.existing_checkpoint:
+    if args.checkpoint:
         model, optimizer, lr_scheduler, epoch = load_checkpoint(
-            model, args.existing_checkpoint, optimizer, lr_scheduler
+            model, args.checkpoint, optimizer, lr_scheduler
         )
 
     return model, optimizer, lr_scheduler, epoch

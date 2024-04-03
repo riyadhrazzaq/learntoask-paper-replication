@@ -73,6 +73,7 @@ def main():
         default=300,
         help="Number of hidden units in the LSTM.",
     )
+
     parser.add_argument(
         "--train_glove", action="store_true", help="Train the GloVe embedding further."
     )
@@ -102,7 +103,7 @@ def main():
 
     # Define checkpoint and Neptune-related arguments
     parser.add_argument(
-        "--existing_checkpoint",
+        "--checkpoint",
         type=str,
         help="Path to checkpoint for resuming training.",
     )

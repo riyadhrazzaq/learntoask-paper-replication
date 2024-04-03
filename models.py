@@ -169,7 +169,6 @@ class Seq2Seq(nn.Module):
 
         for t in range(max_seq):
             logit, (h, c) = self.decoder(encoder_out, decoder_input, h, c)
-            print(logit.shape)
             most_probable_tokens = torch.max(logit, dim=1)[1]
             outputs[:, t] = most_probable_tokens
             decoder_input = most_probable_tokens.view(-1, 1)
@@ -242,10 +241,9 @@ class Seq2Seq(nn.Module):
                             self.eos_index,
                         ]
                         prob = probs[i] * k_probs[i]
-                        return result, prob
+                        return torch.tensor(result).unsqueeze(0), prob
 
         # reorganize the output prefix
         i = probs.argmax()
         result = [prefix[j][i] for j in range(len(prefix))]
-
-        return torch.tensor(result).view(1, -1), probs[i]
+        return torch.tensor(result).unsqueeze(0), probs[i]
