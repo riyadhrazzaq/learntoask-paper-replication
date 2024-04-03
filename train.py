@@ -100,6 +100,9 @@ def main():
     )
     parser.add_argument("--max_epoch", type=int, default=15, help="Number of epochs.")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size.")
+    parser.add_argument(
+        "--max_step", type=int, default=float("inf"), help="Number of steps per epoch"
+    )
 
     # Define checkpoint and Neptune-related arguments
     parser.add_argument(
@@ -177,7 +180,7 @@ def run(args):
         config,
         args,
         lr_scheduler,
-        max_step=3,
+        max_step=args.max_step,
         experiment_name=args.experiment_name,
         epoch=epoch,
     )
