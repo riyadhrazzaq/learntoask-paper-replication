@@ -176,7 +176,7 @@ def log(epoch, history, run, enable_neptune):
 
 def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
     if os.path.exists(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device(device))
         model.load_state_dict(checkpoint["model_state_dict"])
 
         if optimizer:

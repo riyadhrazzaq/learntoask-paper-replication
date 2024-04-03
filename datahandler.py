@@ -12,6 +12,8 @@ from models import Seq2Seq
 from tokenization import Tokenizer
 from utils import load_checkpoint
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def yield_token(text_file_path):
     with io.open(text_file_path, encoding="utf-8") as f:
@@ -109,6 +111,8 @@ def load_or_build_models(args, config, vocab):
         num_layers=config["num_layers"],
         train_glove=config["train_glove"],
     )
+    model = model.to(device)
+
     optimizer = torch.optim.SGD(model.parameters(), lr=config["lr"])
     lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
         optimizer, lr_lambda=lambda epoch: 0.5 if epoch > 8 else 1.0
