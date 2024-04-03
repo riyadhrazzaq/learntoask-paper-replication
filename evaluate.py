@@ -183,7 +183,7 @@ def greedy(model, test_dl, config, target, tokenizer):
 def beam(model, src: List[str], tgt: List[str], config, k, tokenizer):
     outputs = []
     bleus = []
-    for s, q in zip(src, tgt):
+    for s, q in tqdm(zip(src, tgt)):
         src_tensor = tokenizer.encode([s], max_seq=config["src_max_seq"])[0].view(1, -1)
         src_tensor = src_tensor.to(device)
 

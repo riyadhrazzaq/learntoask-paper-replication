@@ -96,6 +96,12 @@ def main():
     # Define training hyperparameters arguments
     parser.add_argument("--lr", type=float, default=1.0, help="Learning rate.")
     parser.add_argument(
+        "--lr_decay", type=float, default=0.5, help="Learning rate decay."
+    )
+    parser.add_argument(
+        "--lr_decay_from", type=int, default=8, help="Learning rate decay from epoch."
+    )
+    parser.add_argument(
         "--clip_norm", type=float, default=5.0, help="Gradient clipping norm."
     )
     parser.add_argument("--max_epoch", type=int, default=15, help="Number of epochs.")
@@ -137,6 +143,8 @@ def prepare_config(args):
         "dropout": args.dropout,
         "bidirectional": not args.unidirectional,
         "lr": args.lr,
+        "lr_decay": args.lr_decay,
+        "lr_decay_from": args.lr_decay_from,
         "clip_norm": args.clip_norm,
         "max_epoch": args.max_epoch,
         "max_step": args.max_step,

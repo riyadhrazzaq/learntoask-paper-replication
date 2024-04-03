@@ -115,7 +115,10 @@ def load_or_build_models(args, config, vocab):
 
     optimizer = torch.optim.SGD(model.parameters(), lr=config["lr"])
     lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
-        optimizer, lr_lambda=lambda epoch: 0.5 if epoch > 8 else 1.0
+        optimizer,
+        lr_lambda=lambda epoch: (
+            config["lr_decay"] if epoch > config["lr_decay_from"] else 1.0
+        ),
     )
 
     # load if already exists
