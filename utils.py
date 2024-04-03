@@ -179,3 +179,20 @@ def log(epoch, history, run):
     print(
         f"Epoch: {epoch},\tTrain Loss: {history['loss/train'][-1]},\tVal Loss: {history['loss/valid'][-1]}\tVal Perplexity: {history['pplx/valid'][-1]}\tLR: {history['train/epoch/lr'][-1]}"
     )
+
+
+def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+        model.load_state_dict(checkpoint["model_state_dict"])
+
+        if optimizer:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if lr_scheduler:
+            lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
+
+        print(f"🎉 Loaded existing model. Epoch: {checkpoint['epoch']}")
+        return model, optimizer, lr_scheduler
+
+    else:
+        raise Exception("No checkpoint found in the provided path")

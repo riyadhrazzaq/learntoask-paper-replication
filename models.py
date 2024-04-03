@@ -105,6 +105,7 @@ class Seq2Seq(nn.Module):
         hidden_dim=8,
         bidirectional=True,
         num_layers=2,
+        train_glove=False,
     ):
 
         super().__init__()
@@ -117,7 +118,9 @@ class Seq2Seq(nn.Module):
         if embedding_vector is None:
             self.embedding = nn.Embedding(vocab_size, embedding_dim)
         else:
-            self.embedding = nn.Embedding.from_pretrained(embedding_vector)
+            self.embedding = nn.Embedding.from_pretrained(
+                embedding_vector, freeze=False
+            )
         self.encoder = Encoder(
             self.embedding,
             embedding_dim,
