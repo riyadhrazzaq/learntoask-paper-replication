@@ -1,7 +1,12 @@
 import argparse
+import logging
 
 from datahandler import load_and_build_vocab, get_data_loader, load_or_build_models
 from tokenization import Tokenizer
+from utils import fit
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 
 def main():
@@ -63,7 +68,10 @@ def main():
 
     # Define LSTM hyperparameters arguments
     parser.add_argument(
-        "--hidden", type=int, default=300, help="Number of hidden units in the LSTM."
+        "--hidden_dim",
+        type=int,
+        default=300,
+        help="Number of hidden units in the LSTM.",
     )
     parser.add_argument(
         "--train_glove", action="store_true", help="Train the GloVe embedding further."
@@ -79,7 +87,7 @@ def main():
         help="Dropout probability between LSTM layers",
     )
     parser.add_argument(
-        "--unidirectioanl",
+        "--unidirectional",
         action="store_true",
         help="Use a unidirectional LSTM in Encoder",
     )
@@ -101,6 +109,12 @@ def main():
     parser.add_argument(
         "--enable_neptune", action="store_true", help="Enable Neptune Cloud logging."
     )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        required=False,
+        help="meaningful experiment name for search",
+    )
 
     # Parse the arguments
     args = parser.parse_args()
@@ -112,8 +126,8 @@ def main():
 
 def prepare_config(args):
     config = {
-        "hidden": args.hidden,
-        "embedding": 300,
+        "hidden_dim": args.hidden_dim,
+        "embedding_dim": 300,
         "num_layers": args.num_layers,
         "dropout": args.dropout,
         "bidirectional": not args.unidirectional,
@@ -131,19 +145,41 @@ def prepare_config(args):
 
 def run(args):
     config = prepare_config(args)
+
+    # prepare vocab and tokenizer
+    logger.info("Preparing vocab and tokenizer")
     vocab = load_and_build_vocab(
         args.train_src_file, args.train_tgt_file, args.vocab_path
     )
     tokenizer = Tokenizer(vocab, vocab["<PAD>"], vocab["<SOS>"], vocab["<EOS>"])
+
+    logger.info("Preparing training and validation data loaders")
+    # prepare data loaders
     train_dl = get_data_loader(
         args.train_src_file, args.train_tgt_file, tokenizer, config, True
     )
-
     valid_dl = get_data_loader(
         args.dev_src_file, args.dev_tgt_file, tokenizer, config, shuffle=False
     )
 
+    # prepare model
+    logger.info("Preparing model and optimizer")
     model, optimizer, lr_scheduler, epoch = load_or_build_models(args, config, vocab)
+
+    # now train
+    logger.info("Beginning training")
+    fit(
+        model,
+        optimizer,
+        train_dl,
+        valid_dl,
+        config,
+        args,
+        lr_scheduler,
+        max_step=3,
+        experiment_name=args.experiment_name,
+        epoch=epoch,
+    )
 
 
 if __name__ == "__main__":

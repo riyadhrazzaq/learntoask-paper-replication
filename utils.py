@@ -1,26 +1,18 @@
-from pathlib import Path
-import io
 import os
-from typing import List
+from pathlib import Path
 from statistics import mean
-
-# these are utility scripts
-import datahandler as dh
-from tokenization import Tokenizer
-
-import torch
-from torch import nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, TensorDataset
-import torchtext
-from torchtext.vocab import build_vocab_from_iterator, GloVe
-
-import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-from nltk.translate.bleu_score import corpus_bleu
+from typing import List
 
 import neptune
+import torch
+from torch import nn
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
+import logging
+
+logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -99,23 +91,24 @@ def fit(
     optimizer,
     train_dl: torch.utils.data.DataLoader,
     valid_dl: torch.utils.data.DataLoader,
-    tokenizer,
     config: dict,
+    args,
     lr_scheduler=None,
     checkpoint_dir="./checkpoint",
     max_step=-1,
-    validation_data: List[str] = None,
     experiment_name=None,
+    epoch=0,
 ):
-    if enable_neptune:
+    if args.enable_neptune:
+        api_token = os.environ["NEPTUNE_API_TOKEN"]
         run = neptune.init_run(
             project="riyadhrazzaq/learning-to-ask",
             name=experiment_name,
-            api_token=secret_value_0,
+            api_token=api_token,
         )
         run["parameters"] = config
 
-    best_pplx = float("-inf")
+    best_pplx = float("inf")
 
     history = {
         "loss/train": [],
@@ -124,7 +117,7 @@ def fit(
         "train/epoch/lr": [],
     }
 
-    for epoch in range(1, config["max_epoch"] + 1):
+    for epoch in range(epoch + 1, epoch + config["max_epoch"] + 1):
         model.train()
         loss_across_batches = []
         bar = tqdm(train_dl, unit="batch")
@@ -143,7 +136,7 @@ def fit(
 
             # show each batch loss in tqdm bar
             bar.set_postfix(**{"loss": loss.item()})
-            if enable_neptune:
+            if args.enable_neptune:
                 run["train/batch/loss"].append(loss.item())
 
             # skip training on the entire training dataset
@@ -158,18 +151,18 @@ def fit(
         history["pplx/valid"].append(validation_metrics["pplx"])
         history["train/epoch/lr"].append(lr_scheduler.get_last_lr()[0])
 
-        if validation_metrics["pplx"] > best_pplx:
+        if validation_metrics["pplx"] < best_pplx:
             best_pplx = validation_metrics["pplx"]
             save_checkpoint(model, optimizer, epoch, lr_scheduler, checkpoint_dir)
-            print("🎉 best pplx reached, saved a checkpoint :)")
+            print("🎉 best pplx reached, saved a checkpoint.")
 
-        log(epoch, history, run if enable_neptune else None)
+        log(epoch, history, run if args.enable_neptune else None, args.enable_neptune)
 
-    if enable_neptune:
+    if args.enable_neptune:
         run.stop()
 
 
-def log(epoch, history, run):
+def log(epoch, history, run, enable_neptune):
     if enable_neptune:
         run["train/epoch/loss"].append(history["loss/train"][-1])
         run["valid/epoch/pplx"].append(history["pplx/valid"][-1])
@@ -190,9 +183,10 @@ def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if lr_scheduler:
             lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
+        epoch = checkpoint["epoch"]
 
-        print(f"🎉 Loaded existing model. Epoch: {checkpoint['epoch']}")
-        return model, optimizer, lr_scheduler
+        logger.info(f"🎉 Loaded existing model. Epoch: {checkpoint['epoch']}")
+        return model, optimizer, lr_scheduler, epoch
 
     else:
         raise Exception("No checkpoint found in the provided path")

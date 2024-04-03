@@ -42,6 +42,8 @@ def load_and_build_vocab(sentence_path, question_path, vocab_path=None):
         if token not in vocab:
             vocab.append_token(token)
 
+    torch.save(vocab, "./checkpoint/vocab.pt")
+
     return vocab
 
 
@@ -80,14 +82,15 @@ def get_data_loader(
 def load_or_build_models(args, config, vocab):
     # load embedding vector
     if args.embedding_vector_path and Path(args.embedding_vector_path).is_file():
-        embedding_vector = torch.load(args.embedding_vector_path)
+        glove = torch.load(args.embedding_vector_path)
     else:
-        embedding_vector = torch.zeros(size=(len(vocab), config["embedding"]))
         glove = GloVe(
-            name="840B", dim=config["embedding"], cache=args.glove_embedding_dir
+            name="840B", dim=config["embedding_dim"], cache=args.glove_embedding_dir
         )
-        for index in range(len(vocab)):
-            embedding_vector[index] = glove[vocab.lookup_token(index)]
+
+    embedding_vector = torch.zeros(size=(len(vocab), config["embedding_dim"]))
+    for index in range(len(vocab)):
+        embedding_vector[index] = glove[vocab.lookup_token(index)]
 
     model = Seq2Seq(
         len(vocab),
@@ -105,12 +108,12 @@ def load_or_build_models(args, config, vocab):
     lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
         optimizer, lr_lambda=lambda epoch: 0.5 if epoch > 8 else 1.0
     )
-    epoch = 1
 
     # load if already exists
+    epoch = 0
     if args.existing_checkpoint:
-        model, optimizer, lr_scheduler = load_checkpoint(
-            args.existing_checkpoint, model, optimizer, lr_scheduler
+        model, optimizer, lr_scheduler, epoch = load_checkpoint(
+            model, args.existing_checkpoint, optimizer, lr_scheduler
         )
 
-    return model, optimizer, lr_scheduler, lr_scheduler.get_last_lr()
+    return model, optimizer, lr_scheduler, epoch

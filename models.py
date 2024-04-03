@@ -119,7 +119,7 @@ class Seq2Seq(nn.Module):
             self.embedding = nn.Embedding(vocab_size, embedding_dim)
         else:
             self.embedding = nn.Embedding.from_pretrained(
-                embedding_vector, freeze=False
+                embedding_vector, freeze=train_glove
             )
         self.encoder = Encoder(
             self.embedding,
