@@ -130,7 +130,13 @@ def run(args):
 
     # prepare model
     logger.info("Loading model")
-    model, optimizer, lr_scheduler, epoch = load_or_build_models(args, config, vocab)
+    model, optimizer, lr_scheduler, epoch = load_or_build_models(
+        args.checkpoint,
+        args.embedding_vector_path,
+        args.glove_embedding_dir,
+        config,
+        vocab,
+    )
 
     # now train
     logger.info("Beginning evaluation")

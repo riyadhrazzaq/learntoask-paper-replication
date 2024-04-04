@@ -81,18 +81,20 @@ def get_data_loader(
     return DataLoader(dataset, batch_size=config["batch_size"], shuffle=shuffle)
 
 
-def load_or_build_models(args, config, vocab):
+def load_or_build_models(
+    checkpoint, embedding_vector_path, glove_embedding_dir, config, vocab
+):
     # load embedding vector
-    if args.checkpoint:
+    if checkpoint:
         # if a checkpoint exists, don't bother wasting time on glove
         # the checkpoint already has the valid embedding weights
         embedding_vector = torch.zeros(size=(len(vocab), config["embedding_dim"]))
     else:
-        if args.embedding_vector_path and Path(args.embedding_vector_path).is_file():
-            glove = torch.load(args.embedding_vector_path)
+        if embedding_vector_path and Path(embedding_vector_path).is_file():
+            glove = torch.load(embedding_vector_path)
         else:
             glove = GloVe(
-                name="840B", dim=config["embedding_dim"], cache=args.glove_embedding_dir
+                name="840B", dim=config["embedding_dim"], cache=glove_embedding_dir
             )
 
         embedding_vector = torch.zeros(size=(len(vocab), config["embedding_dim"]))
@@ -123,9 +125,9 @@ def load_or_build_models(args, config, vocab):
 
     # load if already exists
     epoch = 0
-    if args.checkpoint:
+    if checkpoint:
         model, optimizer, lr_scheduler, epoch = load_checkpoint(
-            model, args.checkpoint, optimizer, lr_scheduler
+            model, checkpoint, optimizer, lr_scheduler
         )
 
     return model, optimizer, lr_scheduler, epoch

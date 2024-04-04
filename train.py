@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 
-def main():
+def get_argparse(hidden_dim=300, src_max_seq=40, tgt_max_seq=15):
     # Create the argument parser
     parser = argparse.ArgumentParser(description="Process model training arguments.")
 
@@ -56,13 +56,13 @@ def main():
     parser.add_argument(
         "--src_max_seq",
         type=int,
-        default=50,
+        default=src_max_seq,
         help="Maximum sequence length for source.",
     )
     parser.add_argument(
         "--tgt_max_seq",
         type=int,
-        default=15,
+        default=tgt_max_seq,
         help="Maximum sequence length for target.",
     )
 
@@ -70,7 +70,7 @@ def main():
     parser.add_argument(
         "--hidden_dim",
         type=int,
-        default=300,
+        default=hidden_dim,
         help="Number of hidden units in the LSTM.",
     )
 
@@ -128,8 +128,11 @@ def main():
     )
 
     # Parse the arguments
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def main():
+    args = get_argparse(hidden_dim=300, src_max_seq=40, tgt_max_seq=15)
     # Placeholder for further code using the parsed arguments
     print(args)  # Example usage: print arguments for clarity
     run(args)
@@ -178,7 +181,13 @@ def run(args):
 
     # prepare model
     logger.info("Preparing model and optimizer")
-    model, optimizer, lr_scheduler, epoch = load_or_build_models(args, config, vocab)
+    model, optimizer, lr_scheduler, epoch = load_or_build_models(
+        args.checkpoint,
+        args.embedding_vector_path,
+        args.glove_embedding_dir,
+        config,
+        vocab,
+    )
 
     # now train
     logger.info("Beginning training")
