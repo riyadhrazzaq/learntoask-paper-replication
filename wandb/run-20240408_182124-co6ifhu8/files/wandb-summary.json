@@ -1,0 +1,1 @@
+{"train/loss": 16, "_timestamp": 1712594027.7000806, "_runtime": 743.5715246200562, "_step": 100099, "valid/loss": 7, "valid/pplx": 1, "_wandb": {"runtime": 39}}

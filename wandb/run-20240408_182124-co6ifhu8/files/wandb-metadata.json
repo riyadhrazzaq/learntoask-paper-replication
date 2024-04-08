@@ -1,0 +1,79 @@
+{
+    "os": "Linux-6.7.9-200.fc39.x86_64-x86_64-with-glibc2.38",
+    "python": "3.9.18",
+    "heartbeatAt": "2024-04-08T16:21:25.778738",
+    "startedAt": "2024-04-08T16:21:24.121781",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "wandb-tutorial.ipynb",
+    "codePathLocal": "wandb-tutorial.ipynb",
+    "root": "/home/riyadh/codes/nlp/learn2ask",
+    "git": {
+        "remote": "git@github.com:riyadhrazzaq/learntoask-paper-replication.git",
+        "commit": "26cf657dfabe8ebaf3b44809a28ee9c21ad9fb75"
+    },
+    "email": "riyadh.razzaq@gmail.com",
+    "host": "fedora",
+    "username": "riyadh",
+    "executable": "/home/riyadh/codes/nlp/learn2ask/venv/bin/python3.9",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 2000.220375,
+        "min": 400.0,
+        "max": 4100.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2000.851,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 2000.521,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 1999.655,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 1998.287,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 2003.732,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 2000.228,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 1998.786,
+            "min": 400.0,
+            "max": 4100.0
+        },
+        {
+            "current": 1999.998,
+            "min": 400.0,
+            "max": 4100.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 97.87200164794922,
+            "used": 23.620891571044922
+        }
+    },
+    "memory": {
+        "total": 15.266353607177734
+    }
+}

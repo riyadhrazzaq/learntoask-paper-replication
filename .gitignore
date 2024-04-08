@@ -161,3 +161,4 @@ cython_debug/
 glove*
 .idea/
 checkpoint/
+srun-train.sh

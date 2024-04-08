@@ -77,6 +77,8 @@ class Decoder(nn.Module):
         )
 
     def forward(self, encoder_out, target, last_hidden_state, last_cell_state):
+        # Ls = source sequence length, N = batch size,
+        # DH = number of RNN direction * hidden size
         x = self.embedding(target)
         # => N, 1, d
         output, (ht, ct) = self.lstm(x, (last_hidden_state, last_cell_state))
