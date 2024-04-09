@@ -1,10 +1,17 @@
 import argparse
 import logging
+from pathlib import Path
 
-from datahandler import load_and_build_vocab, get_data_loader, load_or_build_models
-from tokenization import Tokenizer
-from utils import fit
+import torch
+import torchtext
+from torch.utils.data import DataLoader
 
+from datautils import load_and_build_vocab, Tokenizer, SrcTgtDataset
+from evalutils import report_bleu
+from models import Seq2Seq
+from trainutils import fit
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
@@ -13,28 +20,10 @@ def main():
     # Create the argument parser
     parser = argparse.ArgumentParser(description="Process model training arguments.")
 
-    # Define data arguments
     parser.add_argument(
-        "train_src_file",
+        "directory",
         type=str,
-        help="Path to the source file. For example, sentences.txt where each samples are in a separate line",
-    )
-
-    parser.add_argument(
-        "train_tgt_file",
-        type=str,
-        help="Path to the target file. For example, question.txt where each samples are in a separate line",
-    )
-
-    parser.add_argument(
-        "dev_src_file",
-        type=str,
-        help="Path to the validation source file. For example, sentences.txt where each samples are in a separate line",
-    )
-    parser.add_argument(
-        "dev_tgt_file",
-        type=str,
-        help="Path to the validation target file. For example, question.txt where each samples are in a separate line",
+        help="Path to the directory where train.src, train.tgt, dev.src, dev.tgt exists.",
     )
     parser.add_argument(
         "--embedding_vector_path",
@@ -47,9 +36,6 @@ def main():
         type=str,
         help="Directory to use for GloVe embeddings. Default is .vector_cache/",
         required=False,
-    )
-    parser.add_argument(
-        "--vocab_path", type=str, help="Path to an existing vocab.pt file."
     )
 
     # define data preprocess arguments
@@ -68,7 +54,7 @@ def main():
 
     # Define LSTM hyperparameters arguments
     parser.add_argument(
-        "--hidden_dim",
+        "--hidden_size",
         type=int,
         default=300,
         help="Number of hidden units in the LSTM.",
@@ -135,10 +121,10 @@ def main():
     run(args)
 
 
-def prepare_config(args):
-    config = {
-        "hidden_dim": args.hidden_dim,
-        "embedding_dim": 300,
+def select_params_from_args(args):
+    params = {
+        "hidden_size": args.hidden_size,
+        "embedding_size": 300,
         "num_layers": args.num_layers,
         "dropout": args.dropout,
         "bidirectional": not args.unidirectional,
@@ -154,46 +140,102 @@ def prepare_config(args):
         "batch_size": args.batch_size,
     }
 
-    return config
+    return params
 
 
 def run(args):
-    config = prepare_config(args)
+    params = select_params_from_args(args)
+    data_dir = Path(args.directory)
 
     # prepare vocab and tokenizer
     logger.info("Preparing vocab and tokenizer")
-    vocab = load_and_build_vocab(
-        args.train_src_file, args.train_tgt_file, args.vocab_path
+    src_vocab, tgt_vocab = load_and_build_vocab(
+        data_dir / "train.src", data_dir / "train.tgt"
     )
-    tokenizer = Tokenizer(vocab, vocab["<PAD>"], vocab["<SOS>"], vocab["<EOS>"])
+
+    train_ds = SrcTgtDataset(
+        data_dir,
+        "train",
+        src_vocab,
+        tgt_vocab,
+        src_max_seq=params["src_max_seq"],
+        tgt_max_seq=params["tgt_max_seq"],
+    )
+    dev_ds = SrcTgtDataset(
+        data_dir,
+        "dev",
+        src_vocab,
+        tgt_vocab,
+        src_max_seq=params["src_max_seq"],
+        tgt_max_seq=params["tgt_max_seq"],
+    )
+    src_tokenizer = Tokenizer(
+        src_vocab, src_vocab["<PAD>"], src_vocab["<SOS>"], src_vocab["<EOS>"]
+    )
+    tgt_tokenizer = Tokenizer(
+        tgt_vocab, tgt_vocab["<PAD>"], tgt_vocab["<SOS>"], tgt_vocab["<EOS>"]
+    )
 
     logger.info("Preparing training and validation data loaders")
-    # prepare data loaders
-    train_dl = get_data_loader(
-        args.train_src_file, args.train_tgt_file, tokenizer, config, True
+    params["batch_size"] = 64
+    train_dl = DataLoader(train_ds, batch_size=params["batch_size"], shuffle=True)
+    dev_dl = DataLoader(dev_ds, batch_size=params["batch_size"], shuffle=False)
+
+    logger.info("loading vector into memory")
+    glove_vec = torchtext.vocab.Vectors(
+        name="glove.840B.300d.txt", cache=args.glove_embedding_dir
     )
-    valid_dl = get_data_loader(
-        args.dev_src_file, args.dev_tgt_file, tokenizer, config, shuffle=False
-    )
+    src_embedding_vector = glove_vec.get_vecs_by_tokens(src_vocab.get_itos())
+    tgt_embedding_vector = glove_vec.get_vecs_by_tokens(tgt_vocab.get_itos())
 
     # prepare model
     logger.info("Preparing model and optimizer")
-    model, optimizer, lr_scheduler, epoch = load_or_build_models(args, config, vocab)
+    net = Seq2Seq(
+        len(src_vocab),
+        len(tgt_vocab),
+        src_embedding_vector,
+        tgt_embedding_vector,
+        tgt_vocab["<PAD>"],
+        tgt_vocab["<SOS>"],
+        tgt_vocab["<EOS>"],
+        hidden_size=params["hidden_size"],
+        bidirectional=True,
+        num_layers=params["num_layers"],
+        src_embedding_size=300,
+        tgt_embedding_size=300,
+    )
+
+    net = net.to(device)
+    optimizer = torch.optim.SGD(net.parameters(), lr=params["lr"])
+    lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
+        optimizer,
+        lr_lambda=lambda epoch: (
+            params["lr_decay"] if epoch > params["lr_decay_from"] else 1.0
+        ),
+    )
 
     # now train
     logger.info("Beginning training")
-    fit(
-        model,
-        optimizer,
-        train_dl,
-        valid_dl,
-        config,
-        args,
-        lr_scheduler,
-        max_step=config["max_step"],
+    history = fit(
+        model=net,
+        optimizer=optimizer,
+        train_dl=train_dl,
+        valid_dl=dev_dl,
+        params=params,
+        max_epoch=params["max_epoch"],
+        lr_scheduler=lr_scheduler,
+        max_step=params["max_step"],
         experiment_name=args.experiment_name,
-        epoch=epoch,
+        enable_neptune=args.enable_neptune,
     )
+
+    logger.info("Evaluating validation split")
+    val_bleu = report_bleu(
+        data_dir, "dev", net, src_tokenizer, tgt_tokenizer, out_dir=history.exp_dir
+    )
+    logger.info("val bleu Score %s", val_bleu)
+    history.log("val/bleu", val_bleu)
+    history.stop()
 
 
 if __name__ == "__main__":

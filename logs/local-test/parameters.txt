@@ -1,0 +1,1 @@
+{"hidden_size": 4, "embedding_size": 300, "num_layers": 1, "dropout": 0.3, "bidirectional": true, "lr": 1.0, "lr_decay": 0.9, "lr_decay_from": 5, "clip_norm": 4.0, "max_epoch": 2, "max_step": 2, "src_max_seq": 140, "tgt_max_seq": 12, "train_glove": false, "batch_size": 64}
