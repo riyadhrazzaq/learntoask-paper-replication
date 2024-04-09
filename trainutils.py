@@ -219,7 +219,7 @@ def fit(
 
         if validation_metrics["pplx"] > best_pplx:
             best_pplx = validation_metrics["pplx"]
-            save_checkpoint(model, optimizer, epoch, lr_scheduler, checkpoint_dir)
+            save_checkpoint(model, optimizer, epoch, lr_scheduler, checkpoint_dir + "/" + history.exp_dir)
             print("🎉 best pplx reached, saved a checkpoint.")
 
         log_print(epoch, history)
