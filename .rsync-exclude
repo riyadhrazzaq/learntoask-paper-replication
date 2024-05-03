@@ -1,0 +1,8 @@
+venv/
+.ipynb_checkpoints/
+bibtex/
+checkpoints/
+task1/*/.ipynb_checkpoints/
+task2/*/.ipynb_checkpoints/
+*/*.pt
+*/__pycache__/
