@@ -19,22 +19,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 logger.info("Using device: {}".format(device))
 
 
-def save_checkpoint(model, optimizer, epoch, checkpoint_dir, suffix="model_best.pt"):
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-
-    path = Path(checkpoint_dir) / suffix
-
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-        },
-        path,
-    )
-
-
 def validation(model, valid_dl, max_step, valid_step_interval, pad_index):
     print('Validating...')
     model.eval()
@@ -153,6 +137,31 @@ def log(epoch, history):
     print(
         f"Epoch: {epoch},\tTrain Loss: {history['train/loss'][-1]},\tVal Loss: {history['valid/loss'][-1]}\tval pplx: {history['valid/pplx'][-1]}"
     )
+    
+    
+def save_checkpoint(model, optimizer, src_tokenizer, tgt_tokenizer, epoch, checkpoint_dir, suffix="model_best.pt"):
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+    
+    checkpoint_dir = Path(checkpoint_dir)
+    model_path = checkpoint_dir / suffix
+
+    torch.save(
+        {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+        },
+        model_path,
+    )
+    torch.save(src_tokenizer, checkpoint_dir / "src_tokenizer.pt")
+    torch.save(tgt_tokenizer, checkpoint_dir / "tgt_tokenizer.pt")
+
+
+def load_tokenizers(checkpoint_dir):
+    src_tokenizer = torch.load(checkpoint_dir / "src_tokenizer.pt")
+    tgt_tokenizer = torch.load(checkpoint_dir / "tgt_tokenizer.pt")
+    return src_tokenizer, tgt_tokenizer
 
 
 def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
@@ -165,12 +174,14 @@ def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
         if lr_scheduler:
             lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
         epoch = checkpoint["epoch"]
-
+        
         logger.info(f"🎉 Loaded existing model. Epoch: {checkpoint['epoch']}")
         return model, optimizer, lr_scheduler, epoch
 
     else:
         raise Exception("No checkpoint found in the provided path")
+        
+        
 
 
 def save_history(history, config, history_dir, save_graph=True):

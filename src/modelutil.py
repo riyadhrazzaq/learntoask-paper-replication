@@ -350,3 +350,23 @@ def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy"
 
     tokens = tgt_tokenizer.decode(tgt_token_ids.view(1, -1), keep_specials=False)
     return tokens, attention_scores
+
+
+def init_model(cfg, src_vocab, tgt_vocab):
+    model = Seq2Seq(
+    src_vocab_size=len(src_vocab),
+    tgt_vocab_size=len(tgt_vocab),
+    src_embedding_vector=None,
+    tgt_embedding_vector=None,
+    tgt_pad_index=tgt_vocab["<PAD>"],
+    tgt_sos_index=tgt_vocab["<SOS>"],
+    tgt_eos_index=tgt_vocab["<EOS>"],
+    hidden_size=cfg["hidden_size"],
+    bidirectional=cfg["bidirectional"],
+    num_layers=cfg["num_layers"],
+    src_embedding_size=cfg["src_embedding_size"],
+    tgt_embedding_size=cfg["tgt_embedding_size"],
+    dropout=cfg["dropout"],)
+    
+    model.to(device)
+    return model
