@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 from statistics import mean
+import yaml
 
 import numpy as np
 import torch
@@ -117,9 +118,6 @@ def fit(
             loss.backward()
 
             optimizer.step()
-            if lr_scheduler:
-                lr_scheduler.step()
-
             loss_across_batches.append(loss.item())
 
             # skip training on the entire training dataset
@@ -129,6 +127,9 @@ def fit(
 
             if step_no % cfg['train_step_interval'] == 0:
                 print(f"\tStep: {step_no}/{len(train_dl)}, Loss: {loss.item()}")
+        
+        if lr_scheduler:
+                lr_scheduler.step()
 
         validation_metrics = validation(model, valid_dl, max_step, cfg['valid_step_interval'], ignore_index)
 
@@ -150,7 +151,7 @@ def fit(
 
 def log(epoch, history):
     print(
-        f"\nEpoch: {epoch},\tTrain Loss: {history['train/loss'][-1]},\tVal Loss: {history['valid/loss'][-1]}\tval pplx: {history['valid/pplx'][-1]}"
+        f"Epoch: {epoch},\tTrain Loss: {history['train/loss'][-1]},\tVal Loss: {history['valid/loss'][-1]}\tval pplx: {history['valid/pplx'][-1]}"
     )
 
 
@@ -172,12 +173,15 @@ def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
         raise Exception("No checkpoint found in the provided path")
 
 
-def save_history(history, history_dir, save_graph=True):
+def save_history(history, config, history_dir, save_graph=True):
     if not os.path.exists(history_dir):
         os.makedirs(history_dir)
 
     with open(f"{history_dir}/history.json", "w") as f:
         json.dump(history, f)
+
+    with open(f"{history_dir}/config.yaml", "w") as f:
+        yaml.dump(config, f)
 
     if save_graph:
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
@@ -191,6 +195,22 @@ def save_history(history, history_dir, save_graph=True):
         ax.legend()
         plt.savefig(f"{history_dir}/history_pplx.png")
 
+        
+
+def init_optimizer_scheduler(model, cfg):
+    if cfg["optim"] == "adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
+        )
+    
+    elif cfg["optim"] == "sgd":
+        optimizer = torch.optim.SGD(
+            model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
+        )
+    lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer,
+                                                             lr_lambda=lambda epoch: cfg['lr_decay'] if epoch > cfg['lr_decay_from'] else 1.0)
+    return optimizer, lr_scheduler
+        
 
 
 # def train(parameters, trial=None):

@@ -1,27 +1,29 @@
 # data related
-src: "fra"
-tgt: "eng"
+src: "src"
+tgt: "tgt"
 src_max_seq: 40
 tgt_max_seq: 12
 src_vocab_size: 45000
 tgt_vocab_size: 28000
 
 # model, optimizer related
-optim: "adam"
-lr: 0.001
+optim: "sgd"
+lr: 1.0
+lr_decay: 0.5
+lr_decay_from: 8
 weight_decay: 0.0
 warmup_steps: 0
-hidden_size: 128
+hidden_size: 600
 bidirectional: True
-src_embedding_size: 128
-tgt_embedding_size: 128
+src_embedding_size: 300
+tgt_embedding_size: 300
 num_layers: 2
 dropout: 0.3
 
 # training and evaluation related
 beam_size: 3
 batch_size: 64
-max_epoch: 3
+max_epoch: 15
 random_seed: 111
 
 # checkpoint and log related
