@@ -118,14 +118,13 @@ def load_and_build_vocab(sentence_path, question_path, src_vocab_size, tgt_vocab
 
 class SourceTargetDataset(Dataset):
     def __init__(
-            self, data_dir, srcfile, tgtfile, src_vocab, tgt_vocab, src_max_seq, tgt_max_seq,
+            self, srcfile, tgtfile, src_vocab, tgt_vocab, src_max_seq, tgt_max_seq,
             return_tokenizers=False
     ):
         """
-        Given a directory and a prefix, load the source and target data and build tensors
+        Given filepaths, load the source and target data and build tensors
 
         Args:
-            data_dir (Path): directory where the data is stored
             prefix (str): prefix of the data file, e.g. "train", "valid", "test"
             src_vocab (torchtext.vocab.Vocab): source vocabulary
             tgt_vocab (torchtext.vocab.Vocab): target vocabulary
@@ -133,12 +132,10 @@ class SourceTargetDataset(Dataset):
             tgt_max_seq (int): maximum sequence length for target
         """
         super().__init__()
-        if not isinstance(data_dir, Path):
-            data_dir = Path(data_dir)
 
-        with open(data_dir / srcfile, "r") as f:
+        with open(srcfile, "r") as f:
             src_lines = f.readlines()
-        with open(data_dir / tgtfile, "r") as f:
+        with open(tgtfile, "r") as f:
             tgt_lines = f.readlines()
 
         self.src_tensor, self.src_mask, self.src_tokenizer = self._build_tensor(

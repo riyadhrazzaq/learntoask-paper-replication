@@ -1,5 +1,11 @@
 import argparse
 
+import torchtext
+
+from config import validate_config, load_config
+
+torchtext.disable_torchtext_deprecation_warning()
+
 from trainutil import *
 
 logging.basicConfig(
@@ -13,28 +19,26 @@ logger = logging.getLogger(__name__)
 args = argparse.ArgumentParser()
 args.add_argument('training-file', type=str)
 args.add_argument('validation-file', type=str)
-args.add_argument("experiment-name", type=str)
 
-args.add_argument('--batch-size', type=int, default=cfg.batch_size)
-args.add_argument('--lr', type=float, default=cfg.lr)
-args.add_argument("--model-name", type=str, default=cfg.model_name)
-args.add_argument("--max-step", type=int, default=-1)
-args.add_argument("--max-length", type=int, default=cfg.max_length)
-args.add_argument("--max-epoch", type=int, default=cfg.max_epoch)
-args.add_argument("--no-pretrain", action="store_true")
-args.add_argument("--weight-decay", type=float, default=cfg.weight_decay)
-args.add_argument("--warmup-steps", type=int, default=cfg.warmup_steps)
-args.add_argument("--nth-hidden-layer", type=int, default=cfg.nth_hidden_layer)
+args.add_argument("--config", type=str, default="config.yaml", help="path to the configuration file")
 
 args = args.parse_args()
 
-# build param dictionary from args
-params = vars(args)
-params = {k.replace('-', '_'): v for k, v in params.items()}
+
+def _assert_dir_empty(cfg):
+    # validate experiment directory is empty
+    experiment_dir = cfg['checkpoint_dir'] + "/" + cfg["experiment_name"]
+    if os.path.exists(experiment_dir):
+        if len(os.listdir(experiment_dir)) > 0:
+            raise ValueError(f"Experiment directory `{experiment_dir}` is not empty. Aborting to prevent "
+                             f"overwriting.")
 
 
 def main():
-    train(params, disable_tqdm=True)
+    cfg = load_config(args.config)
+    _assert_dir_empty(cfg)
+
+    train(cfg)
 
 
 if __name__ == '__main__':

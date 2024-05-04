@@ -2,6 +2,7 @@ data/
 */checkpoint/
 */checkpoints/*
 *.pt
+*.png
 notebooks/checkpoints/debug1/model_last.pt
 notebooks/checkpoints/debug1/model_last.pt
 

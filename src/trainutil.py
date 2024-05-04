@@ -1,22 +1,21 @@
 import json
-import logging
 import os
-from pathlib import Path
+import random
 from statistics import mean
-import yaml
 
-import numpy as np
-import torch
 import torchmetrics
-from matplotlib import pyplot as plt
-from torch import nn
+import yaml
 from torch.utils.data import DataLoader
+
+from datautil import *
+from metrics import *
+from modelutil import *
+
 
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-logger.info("Using device: {}".format(device))
 
 
 def validation(model, valid_dl, max_step, valid_step_interval, pad_index):
@@ -76,8 +75,11 @@ def fit(
         ignore_index=-100
 ):
     logger.info("checkpoint_dir: {}".format(checkpoint_dir))
+
+    random.seed(cfg['random_seed'])
     np.random.seed(cfg['random_seed'])
     torch.manual_seed(cfg['random_seed'])
+
     best_pplx = float("inf")
     history = {"train/loss": [], "valid/loss": [], "valid/pplx": []}
 
@@ -111,9 +113,9 @@ def fit(
 
             if step_no % cfg['train_step_interval'] == 0:
                 print(f"\tStep: {step_no}/{len(train_dl)}, Loss: {loss.item()}")
-        
+
         if lr_scheduler:
-                lr_scheduler.step()
+            lr_scheduler.step()
 
         validation_metrics = validation(model, valid_dl, max_step, cfg['valid_step_interval'], ignore_index)
 
@@ -137,12 +139,12 @@ def log(epoch, history):
     print(
         f"Epoch: {epoch},\tTrain Loss: {history['train/loss'][-1]},\tVal Loss: {history['valid/loss'][-1]}\tval pplx: {history['valid/pplx'][-1]}"
     )
-    
-    
-def save_checkpoint(model, optimizer, src_tokenizer, tgt_tokenizer, epoch, checkpoint_dir, suffix="model_best.pt"):
+
+
+def save_checkpoint(model, optimizer, epoch, checkpoint_dir, suffix="model_best.pt"):
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
-    
+
     checkpoint_dir = Path(checkpoint_dir)
     model_path = checkpoint_dir / suffix
 
@@ -154,8 +156,10 @@ def save_checkpoint(model, optimizer, src_tokenizer, tgt_tokenizer, epoch, check
         },
         model_path,
     )
-    torch.save(src_tokenizer, checkpoint_dir / "src_tokenizer.pt")
-    torch.save(tgt_tokenizer, checkpoint_dir / "tgt_tokenizer.pt")
+
+def save_tokenizers(src_tokenizer, tgt_tokenizer, checkpoint_dir):
+    torch.save(src_tokenizer, checkpoint_dir + "/src_tokenizer.pt")
+    torch.save(tgt_tokenizer, checkpoint_dir + "/tgt_tokenizer.pt")
 
 
 def load_tokenizers(checkpoint_dir):
@@ -174,14 +178,12 @@ def load_checkpoint(model, checkpoint_path, optimizer=None, lr_scheduler=None):
         if lr_scheduler:
             lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
         epoch = checkpoint["epoch"]
-        
+
         logger.info(f"🎉 Loaded existing model. Epoch: {checkpoint['epoch']}")
         return model, optimizer, lr_scheduler, epoch
 
     else:
         raise Exception("No checkpoint found in the provided path")
-        
-        
 
 
 def save_history(history, config, history_dir, save_graph=True):
@@ -206,66 +208,83 @@ def save_history(history, config, history_dir, save_graph=True):
         ax.legend()
         plt.savefig(f"{history_dir}/history_pplx.png")
 
-        
 
 def init_optimizer_scheduler(model, cfg):
     if cfg["optim"] == "adam":
         optimizer = torch.optim.Adam(
             model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
         )
-    
+
     elif cfg["optim"] == "sgd":
         optimizer = torch.optim.SGD(
             model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
         )
     lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer,
-                                                             lr_lambda=lambda epoch: cfg['lr_decay'] if epoch > cfg['lr_decay_from'] else 1.0)
+                                                             lr_lambda=lambda epoch: cfg['lr_decay'] if epoch > cfg[
+                                                                 'lr_decay_from'] else 1.0)
     return optimizer, lr_scheduler
-        
 
 
-# def train(parameters, trial=None):
-#     logger.info(f"Training Parameters: {parameters}")
-#
-#     tokenizer = BertTokenizerFast.from_pretrained(cfg.model_name)
-#     train_ds = DatasetFromJson(parameters["training_file"], tokenizer, cfg.max_length)
-#     val_ds = DatasetFromJson(parameters["validation_file"], tokenizer, cfg.max_length)
-#     train_dl = DataLoader(
-#         train_ds,
-#         batch_size=parameters["batch_size"],
-#         collate_fn=CollateFn(tokenizer, return_raw=False),
-#     )
-#     val_dl = DataLoader(
-#         val_ds,
-#         batch_size=parameters["batch_size"],
-#         collate_fn=CollateFn(tokenizer=tokenizer, return_raw=True),
-#     )
-#
-#     model = model_init(parameters["model_name"],
-#                        not parameters["no_pretrain"],
-#                        parameters['nth_hidden_layer'])
-#     optimizer = torch.optim.AdamW(
-#         model.parameters(), lr=parameters["lr"], weight_decay=parameters["weight_decay"]
-#     )
-#     num_training_steps = parameters['max_epoch'] * len(train_dl)
-#     lr_scheduler = get_scheduler(
-#         name="linear", optimizer=optimizer, num_warmup_steps=parameters['warmup_steps'],
-#         num_training_steps=num_training_steps
-#     )
-#     checkpoint_dir = f"{cfg.checkpoint_dir}/{parameters['experiment_name']}"
-#     history_dir = f"{checkpoint_dir}/history"
-#     history = fit(
-#         model,
-#         optimizer,
-#         train_dl,
-#         val_dl,
-#         parameters,
-#         checkpoint_dir,
-#         max_step=parameters["max_step"],
-#         epoch=0,
-#         lr_scheduler=lr_scheduler,
-#         trial=trial,
-#         disable_tqdm=disable_tqdm
-#     )
-#     save_history(history, history_dir, save_graph=True)
-#     return history
+def train(cfg):
+    logger.info(f"Training Parameters: {cfg}")
+    data_root = cfg['data_dir']
+    train_src_path = f"{data_root}/train.src"
+    train_tgt_path = f"{data_root}/train.tgt"
+
+    src_vocab, tgt_vocab = load_and_build_vocab(
+        sentence_path=train_src_path,
+        question_path=train_tgt_path,
+        src_vocab_size=cfg["src_vocab_size"],
+        tgt_vocab_size=cfg["tgt_vocab_size"],
+    )
+
+    train_ds = SourceTargetDataset(
+        srcfile=data_root + "/train.src",
+        tgtfile=data_root + "/train.tgt",
+        src_vocab=src_vocab,
+        tgt_vocab=tgt_vocab,
+        src_max_seq=cfg["src_max_seq"],
+        tgt_max_seq=cfg["tgt_max_seq"],
+        return_tokenizers=True,
+    )
+
+    dev_ds = SourceTargetDataset(
+        srcfile=data_root + "/dev.src",
+        tgtfile=data_root + "/dev.tgt",
+        src_vocab=src_vocab,
+        tgt_vocab=tgt_vocab,
+        src_max_seq=cfg["src_max_seq"],
+        tgt_max_seq=cfg["tgt_max_seq"],
+    )
+    train_dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True)
+    valid_dl = DataLoader(dev_ds, batch_size=cfg["batch_size"], shuffle=False)
+
+    model = init_model(cfg, src_vocab, tgt_vocab)
+
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
+    )
+
+    lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer,
+                                                             lr_lambda=lambda epoch: cfg["lr_decay"] if epoch > cfg[
+                                                                 "lr_decay_from"] else 1.0)
+
+    checkpoint_dir = f"{cfg['checkpoint_dir']}/{cfg['experiment_name']}"
+    history_dir = f"{checkpoint_dir}/history"
+    history = fit(
+        model=model,
+        optimizer=optimizer,
+        train_dl=train_dl,
+        valid_dl=valid_dl,
+        cfg=cfg,
+        checkpoint_dir=checkpoint_dir,
+        max_step=cfg["max_step"],
+        epoch=0,
+        lr_scheduler=lr_scheduler,
+        ignore_index=tgt_vocab["<PAD>"],
+    )
+
+    save_history(history, cfg, history_dir, save_graph=True)
+    save_tokenizers(train_ds.src_tokenizer, train_ds.tgt_tokenizer, checkpoint_dir)
+
+    return history
