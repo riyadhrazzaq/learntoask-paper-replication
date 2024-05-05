@@ -1,6 +1,6 @@
 import logging
 import random
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 import torch
@@ -216,6 +216,47 @@ class Seq2Seq(nn.Module):
         # (N, max_seq, tgt_vocab_size)
         return torch.stack(logits, dim=1)
 
+    def nucleus_generate(self, sources: torch.Tensor, source_masks: torch.Tensor, max_seq: int, p: int):
+        """
+
+        :param sources: source tokens (bs, vocab_size)
+        :param source_masks: (bs, vocab_size)
+        :param max_seq:
+        :return:
+        """
+        N = sources.size(0)
+
+        with torch.no_grad():
+            decoder_input = torch.full(
+                (N, 1), self.tgt_sos_index, device=device, dtype=torch.long
+            )
+
+            # attention scores
+            scores: List[torch.Tensor] = []
+            # output tokens
+            output_token_ids: List[List[int]] = [[self.tgt_sos_index, ] for _ in range(N)]
+
+            # (N, L, DH)
+            encoder_out, h = self.encoder(sources)
+            h = h[: self.num_layers]
+            c = torch.randn_like(h, device=device)
+            for t in range(max_seq):
+                # (N, tgt_vocab_size)
+                # print(encoder_out.shape, decoder_input.shape, h.shape, c.shape)
+                logit, (h, c), score = self.decoder(
+                    encoder_out, decoder_input, h, c, source_masks
+                )
+
+                # (N, 1)
+                token_ids, token_probs = nucleus_sample(logit, p)
+
+                for i, token_id in enumerate(token_ids):
+                    output_token_ids[i].append(token_id.item())
+
+                scores.append(score)
+
+            return torch.tensor(output_token_ids, dtype=torch.long), torch.stack(scores, dim=2)
+
     def greedy_generate(self, source, source_mask, max_seq, stop_at_eos=True):
         assert source.size(0) == 1, "requires one sample only"
         with torch.no_grad():
@@ -324,17 +365,48 @@ class Seq2Seq(nn.Module):
             return torch.tensor(result).view(1, -1), probs[i]
 
 
-def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy") -> (str, Optional[torch.Tensor]):
+
+def nucleus_sample(logits: torch.Tensor, p: float) -> (List[int], List[float]):
+    """
+
+    :rtype: Tuple
+    """
+    assert logits.dim() == 2, "expected a matrix (batch, vocab_size)"
+
+    probs = F.softmax(logits, dim=-1)
+    sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+    cumulative_sum = torch.cumsum(sorted_probs, dim=-1)
+    out_of_nucleus = cumulative_sum > p
+    # cumulative_sum > p comparison always misses the last token that should be in the nucleus
+    # this line fixes that
+    out_of_nucleus[:, 1:] = out_of_nucleus[:, :-1].clone()
+    out_of_nucleus[:, 0] = False
+    sorted_probs[out_of_nucleus] = 0
+    # Eq. 3 from the nucleus paper
+    sorted_probs = sorted_probs / sorted_probs.sum(dim=-1).unsqueeze(1)
+    sorted_selected_indices = torch.multinomial(sorted_probs, 1)
+    token_probs = torch.gather(sorted_probs, dim=-1, index=sorted_selected_indices)
+    token_indices = torch.gather(sorted_indices, dim=-1, index=sorted_selected_indices)
+
+    # (N, 1), (N, 1)
+    return token_indices.detach(), token_probs.detach()
+
+
+def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy", p=0.8) -> (
+str, Optional[torch.Tensor]):
     """
     Given a model and source text, generate the target text.
 
     Returns:
         text: str
         attention_score: when method is greedy
-
+.flatten().tolist()
     """
+    if method in ["greedy", "beam"]:
+        sentence = [sentence]
+
     src_token_ids, src_mask = src_tokenizer.encode(
-        [sentence], max_seq=cfg["src_max_seq"]
+        sentence, max_seq=cfg["src_max_seq"]
     )
     src_token_ids = src_token_ids.to(device)
     src_mask = src_mask.to(device)
@@ -345,14 +417,21 @@ def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy"
             src_token_ids, src_mask, cfg["tgt_max_seq"], stop_at_eos=True
         )
         attention_scores = attention_scores.squeeze(dim=3)
+        tokens = tgt_tokenizer.decode(tgt_token_ids.view(1, -1), keep_specials=False)
+        return tokens, attention_scores
 
-    else:
+    elif method == "beam":
         tgt_token_ids, prob = model.beam_generate(
             src_token_ids, src_mask, cfg['beam_size'], cfg["tgt_max_seq"], stop_at_eos=True
         )
+        tokens = tgt_tokenizer.decode(tgt_token_ids.view(1, -1), keep_specials=False)
+        return tokens, attention_scores
 
-    tokens = tgt_tokenizer.decode(tgt_token_ids.view(1, -1), keep_specials=False)
-    return tokens, attention_scores
+    elif method == "nucleus":
+        tgt_token_ids, attention_scores = model.nucleus_generate(
+            src_token_ids, src_mask, cfg["tgt_max_seq"], p
+        )
+        return tgt_tokenizer.decode(tgt_token_ids, keep_specials=False), attention_scores
 
 
 def init_model(cfg, src_vocab, tgt_vocab):

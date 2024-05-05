@@ -4,6 +4,7 @@ data/
 *.pt
 *.png
 *glove*.txt
+*.hyp
 
 
 ## The .gitignore file specifies things that git should ignore. 
