@@ -3,8 +3,8 @@ data/
 */checkpoints/*
 *.pt
 *.png
-notebooks/checkpoints/debug1/model_last.pt
-notebooks/checkpoints/debug1/model_last.pt
+*glove*.txt
+
 
 ## The .gitignore file specifies things that git should ignore. 
 ## This default template includes entries for R, Python and visual studio

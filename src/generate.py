@@ -50,6 +50,9 @@ def main():
     tgt_tokenizer = torch.load(args.checkpoint_dir + "/tgt_tokenizer.pt")
     src_vocab = src_tokenizer.vocab
     tgt_vocab = tgt_tokenizer.vocab
+
+    # during generation, loading pretrained glove embedding from file is not required
+    # as they are already in the checkpoint
     model = init_model(cfg, src_vocab, tgt_vocab)
     model, _, _, epoch = load_checkpoint(model, args.checkpoint_dir + "/model_best.pt")
 

@@ -13,5 +13,5 @@ def load_config(path):
 def validate_config(cfg):
     # strip trailing slashes in directory strings, leads to confusion
     for k, v in cfg.items():
-        if "_dir" in k and v[-1] == "/":
+        if "_dir" in k and v is not None and v[-1] == "/":
             cfg[k] = v[:-1]

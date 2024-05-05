@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchtext import vocab
 
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -355,11 +356,19 @@ def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy"
 
 
 def init_model(cfg, src_vocab, tgt_vocab):
+    src_embedding_vector = None
+    tgt_embedding_vector = None
+
+    if cfg["glove_dir"] is not None:
+        glove = vocab.Vectors(name='glove.840B.300d.txt', cache=cfg['glove_dir'])
+        src_embedding_vector = glove.get_vecs_by_tokens(src_vocab.get_itos())
+        tgt_embedding_vector = glove.get_vecs_by_tokens(tgt_vocab.get_itos())
+
     model = Seq2Seq(
         src_vocab_size=len(src_vocab),
         tgt_vocab_size=len(tgt_vocab),
-        src_embedding_vector=None,
-        tgt_embedding_vector=None,
+        src_embedding_vector=src_embedding_vector,
+        tgt_embedding_vector=tgt_embedding_vector,
         tgt_pad_index=tgt_vocab["<PAD>"],
         tgt_sos_index=tgt_vocab["<SOS>"],
         tgt_eos_index=tgt_vocab["<EOS>"],

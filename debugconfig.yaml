@@ -16,8 +16,9 @@ weight_decay: 0.0
 warmup_steps: 0
 hidden_size: 8
 bidirectional: True
-src_embedding_size: 16
-tgt_embedding_size: 16
+src_embedding_size: 300
+tgt_embedding_size: 300
+glove_dir: null  # set to null if not using GloVe
 num_layers: 2
 dropout: 0.3
 
@@ -28,7 +29,7 @@ max_epoch: 3
 max_step: 2
 
 # checkpoint and log related
-experiment_name: "debug"
+experiment_name: "debug-pretrained"
 checkpoint_dir: "./checkpoints"
 valid_step_interval: 1
 train_step_interval: 1
