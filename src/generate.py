@@ -70,8 +70,6 @@ def main():
 
         if i % 100 == 0:
             logger.info(f"Generated {i}/{len(sources)} hypotheses")
-        if i == 100:
-            break
 
     metrics = compute_metrics(hypotheses, targets)
     metrics = {k: v * 100 for k, v in metrics.items()}
