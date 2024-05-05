@@ -36,7 +36,7 @@ args.add_argument('srcfile', type=str)
 args.add_argument('tgtfile', type=str)
 args.add_argument('checkpoint_dir', type=str)
 args.add_argument('--outfile', type=str, help="save generated output to this file")
-args.add_argument('--search', choices=["greedy", "beam"], type=str, default="greedy", help="search method to use")
+args.add_argument('--search', choices=["greedy", "beam", "nucleus"], type=str, default="greedy", help="search method to use")
 
 args = args.parse_args()
 
