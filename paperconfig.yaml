@@ -26,7 +26,6 @@ beam_size: 3
 batch_size: 64
 max_epoch: 15
 max_step: -1
-random_seed: 111
 
 # checkpoint and log related
 experiment_name: "paper"

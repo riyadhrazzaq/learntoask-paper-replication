@@ -1,16 +1,27 @@
 import argparse
 import logging
+import pprint
+import random
 
+import numpy as np
 import torchtext
+try:
+    torchtext.disable_torchtext_deprecation_warning()
+except:
+    pass
 
 from config import load_config
 
-torchtext.disable_torchtext_deprecation_warning()
 import torch
 
 from modelutil import generate, init_model
 from metrics import compute_metrics
 from trainutil import load_checkpoint
+
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,8 +72,7 @@ def main():
 
     metrics = compute_metrics(hypotheses, targets)
     metrics = {k: v * 100 for k, v in metrics.items()}
-    print(metrics, len(hypotheses))
-    hypotheses.extend(['','ami','hoi'])
+    pprint.pp(metrics)
 
     if args.outfile:
         with open(args.outfile, "w") as f:

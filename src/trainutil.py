@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
 
 def validation(model, valid_dl, max_step, valid_step_interval, pad_index):
     print('Validating...')
@@ -76,10 +79,6 @@ def fit(
 ):
     logger.info("checkpoint_dir: {}".format(checkpoint_dir))
 
-    random.seed(cfg['random_seed'])
-    np.random.seed(cfg['random_seed'])
-    torch.manual_seed(cfg['random_seed'])
-
     best_pplx = float("inf")
     history = {"train/loss": [], "valid/loss": [], "valid/pplx": []}
 
@@ -102,8 +101,8 @@ def fit(
 
             # step backward
             loss.backward()
-
             optimizer.step()
+
             loss_across_batches.append(loss.item())
 
             # skip training on the entire training dataset

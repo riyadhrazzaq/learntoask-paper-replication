@@ -1,4 +1,5 @@
 import logging
+import random
 from typing import Optional
 
 import numpy as np
@@ -10,6 +11,10 @@ logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
 
 
 class Attention(nn.Module):
@@ -43,13 +48,13 @@ class Attention(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(
-        self,
-        src_embedding,
-        src_embedding_size,
-        hidden_size,
-        bidirectional=False,
-        num_layers=1,
-        dropout=0.0,
+            self,
+            src_embedding,
+            src_embedding_size,
+            hidden_size,
+            bidirectional=False,
+            num_layers=1,
+            dropout=0.0,
     ):
         super().__init__()
         self.embedding = src_embedding
@@ -78,14 +83,14 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(
-        self,
-        tgt_vocab_size,
-        tgt_embedding,
-        tgt_embedding_size,
-        hidden_size,
-        encoder_bidirectional=False,
-        num_layers=1,
-        dropout=0.0,
+            self,
+            tgt_vocab_size,
+            tgt_embedding,
+            tgt_embedding_size,
+            hidden_size,
+            encoder_bidirectional=False,
+            num_layers=1,
+            dropout=0.0,
     ):
         super().__init__()
 
@@ -114,7 +119,7 @@ class Decoder(nn.Module):
         )
 
     def forward(
-        self, encoder_out, target, last_hidden_state, last_cell_state, source_mask
+            self, encoder_out, target, last_hidden_state, last_cell_state, source_mask
     ):
         x = self.embedding(target)
         # => N, 1, d
@@ -134,20 +139,20 @@ class Decoder(nn.Module):
 
 class Seq2Seq(nn.Module):
     def __init__(
-        self,
-        src_vocab_size,
-        tgt_vocab_size,
-        src_embedding_vector,
-        tgt_embedding_vector,
-        tgt_pad_index,
-        tgt_sos_index,
-        tgt_eos_index,
-        hidden_size,
-        bidirectional=True,
-        num_layers=2,
-        src_embedding_size=100,
-        tgt_embedding_size=100,
-        dropout=0.3,
+            self,
+            src_vocab_size,
+            tgt_vocab_size,
+            src_embedding_vector,
+            tgt_embedding_vector,
+            tgt_pad_index,
+            tgt_sos_index,
+            tgt_eos_index,
+            hidden_size,
+            bidirectional=True,
+            num_layers=2,
+            src_embedding_size=100,
+            tgt_embedding_size=100,
+            dropout=0.3,
     ):
 
         super().__init__()
@@ -327,9 +332,6 @@ def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy"
         attention_score: when method is greedy
 
     """
-    np.random.seed(cfg['random_seed'])
-    torch.manual_seed(cfg['random_seed'])
-
     src_token_ids, src_mask = src_tokenizer.encode(
         [sentence], max_seq=cfg["src_max_seq"]
     )
@@ -354,19 +356,19 @@ def generate(model, sentence, src_tokenizer, tgt_tokenizer, cfg, method="greedy"
 
 def init_model(cfg, src_vocab, tgt_vocab):
     model = Seq2Seq(
-    src_vocab_size=len(src_vocab),
-    tgt_vocab_size=len(tgt_vocab),
-    src_embedding_vector=None,
-    tgt_embedding_vector=None,
-    tgt_pad_index=tgt_vocab["<PAD>"],
-    tgt_sos_index=tgt_vocab["<SOS>"],
-    tgt_eos_index=tgt_vocab["<EOS>"],
-    hidden_size=cfg["hidden_size"],
-    bidirectional=cfg["bidirectional"],
-    num_layers=cfg["num_layers"],
-    src_embedding_size=cfg["src_embedding_size"],
-    tgt_embedding_size=cfg["tgt_embedding_size"],
-    dropout=cfg["dropout"],)
-    
+        src_vocab_size=len(src_vocab),
+        tgt_vocab_size=len(tgt_vocab),
+        src_embedding_vector=None,
+        tgt_embedding_vector=None,
+        tgt_pad_index=tgt_vocab["<PAD>"],
+        tgt_sos_index=tgt_vocab["<SOS>"],
+        tgt_eos_index=tgt_vocab["<EOS>"],
+        hidden_size=cfg["hidden_size"],
+        bidirectional=cfg["bidirectional"],
+        num_layers=cfg["num_layers"],
+        src_embedding_size=cfg["src_embedding_size"],
+        tgt_embedding_size=cfg["tgt_embedding_size"],
+        dropout=cfg["dropout"], )
+
     model.to(device)
     return model
