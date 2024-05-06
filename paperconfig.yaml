@@ -16,6 +16,7 @@ weight_decay: 0.0
 warmup_steps: 0
 hidden_size: 600
 bidirectional: True
+glove_dir: "glove/"
 src_embedding_size: 300
 tgt_embedding_size: 300
 num_layers: 2
@@ -28,7 +29,7 @@ max_epoch: 15
 max_step: -1
 
 # checkpoint and log related
-experiment_name: "paper"
+experiment_name: "paper-with-zeros"
 checkpoint_dir: "./checkpoints"
 valid_step_interval: 100
 train_step_interval: 200

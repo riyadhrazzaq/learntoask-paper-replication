@@ -255,7 +255,7 @@ def train(cfg):
         src_max_seq=cfg["src_max_seq"],
         tgt_max_seq=cfg["tgt_max_seq"],
     )
-    train_dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True)
+    train_dl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=False)
     valid_dl = DataLoader(dev_ds, batch_size=cfg["batch_size"], shuffle=False)
 
     model = init_model(cfg, src_vocab, tgt_vocab)

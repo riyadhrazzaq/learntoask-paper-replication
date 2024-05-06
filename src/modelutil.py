@@ -37,10 +37,10 @@ class Attention(nn.Module):
         # => (N, L, decoder_hidden_size)
         projection = self.projection_layer(encoder_output)
 
-        # (N, L, dec_hid_siz) @ (N, dec_hid_siz, 1) => (N, L, 1)
+        # (N, L, dec_hid_siz) @ (N, dec_hid_siz, 1) => (N, Ls, 1)
         score = projection @ decoder_output.transpose(1, 2)
 
-        #         score = torch.masked_fill(score, ~src_mask.unsqueeze(dim=2), float("-inf"))
+        # score = torch.masked_fill(score, ~src_mask.unsqueeze(dim=2), float("-inf"))
         # => (N, L, 1)
         score = F.softmax(score, dim=1)
 
@@ -75,6 +75,10 @@ class Encoder(nn.Module):
         """
         Args:
             src (torch.Tensor): (N, Ls) A batch of source sentences represented as tensors.
+
+        Returns:
+            encoder_out (torch.Tensor): (N, Ls, DH) The hidden states of the encoder.
+            last_hidden_state (torch.Tensor): (D* #layer, N, d) The last hidden state of the encoder.
         """
         # encoder_out (N, L, d), hT => cT => (#direction * #layer, N, d)
         # hidden states from the last timestep
@@ -122,6 +126,19 @@ class Decoder(nn.Module):
     def forward(
             self, encoder_out, target, last_hidden_state, last_cell_state, source_mask
     ):
+        """
+        Args:
+            encoder_out (torch.Tensor): (N, Ls, DH)
+            target (torch.Tensor): (N, 1)
+            last_hidden_state (torch.Tensor): (#layer, N, d)
+            last_cell_state (torch.Tensor): (#layer, N, d)
+            source_mask (torch.Tensor): (N, Ls)
+
+        Returns:
+            logit (torch.Tensor): (N, vocab_size)
+            (ht, ct) (torch.Tensor): (#layer, N, d)
+            score (torch.Tensor): (N, Ls, 1)
+        """
         x = self.embedding(target)
         # => N, 1, d
         output, (ht, ct) = self.lstm(x, (last_hidden_state, last_cell_state))
@@ -193,12 +210,24 @@ class Seq2Seq(nn.Module):
         )
 
     def forward(self, source, target, source_mask):
+        """
+        Args:
+            source (torch.Tensor): (N, Ls)
+            target (torch.Tensor): (N, Lt)
+            source_mask (torch.Tensor): (N, Ls)
+
+        Returns:
+            logit (torch.Tensor): (N, Lt, vocab_size)
+        """
         encoder_out, h = self.encoder(source)
 
+        # encoder returns hidden states for direction * num_layers
+        # but decoder is unidirectional, so we need to select the first #layers
         h = h[: self.num_layers]
-        c = torch.randn_like(h, device=device)
+        c = torch.zeros_like(h, device=device)
 
         max_seq = target.size(1)
+
         decoder_input = torch.full(
             (source.size(0), 1), self.tgt_sos_index, device=device, dtype=torch.long
         )
@@ -210,7 +239,7 @@ class Seq2Seq(nn.Module):
                 encoder_out, decoder_input, h, c, source_mask
             )
             # (N, 1)
-            decoder_input = target[:, t].view(-1, 1)
+            decoder_input = target[:, t].view(-1, 1).detach()
             logits.append(logit)
 
         # (N, max_seq, tgt_vocab_size)
@@ -218,16 +247,20 @@ class Seq2Seq(nn.Module):
 
     def nucleus_generate(self, sources: torch.Tensor, source_masks: torch.Tensor, max_seq: int, p: int):
         """
+        Args:
+            sources (torch.Tensor): (N, Ls)
+            source_masks (torch.Tensor): (N, Ls)
+            max_seq (int): maximum sequence length
+            p (int): nucleus sampling parameter
 
-        :param sources: source tokens (bs, vocab_size)
-        :param source_masks: (bs, vocab_size)
-        :param max_seq:
-        :return:
+        Returns:
+            output_token_ids (torch.Tensor): (N, max_seq)
+            scores (torch.Tensor): (N, Ls, max_seq)
         """
         N = sources.size(0)
 
         with torch.no_grad():
-            decoder_input = torch.full(
+            token_ids = torch.full(
                 (N, 1), self.tgt_sos_index, device=device, dtype=torch.long
             )
 
@@ -244,7 +277,7 @@ class Seq2Seq(nn.Module):
                 # (N, tgt_vocab_size)
                 # print(encoder_out.shape, decoder_input.shape, h.shape, c.shape)
                 logit, (h, c), score = self.decoder(
-                    encoder_out, decoder_input, h, c, source_masks
+                    encoder_out, token_ids, h, c, source_masks
                 )
 
                 # (N, 1)
@@ -295,7 +328,7 @@ class Seq2Seq(nn.Module):
 
             encoder_out, h = self.encoder(source)
             h = h[: self.num_layers]
-            c = torch.randn_like(h, device=device)
+            c = torch.zeros_like(h, device=device)
 
             decoder_input = torch.full(
                 (1, 1), self.tgt_sos_index, device=device, dtype=torch.long
@@ -305,6 +338,7 @@ class Seq2Seq(nn.Module):
             logit, (h, c), _ = self.decoder(
                 encoder_out, decoder_input, h, c, source_mask
             )
+            # (k, hidden_dim)
             logit = logit.detach()
             # with <SOS> as input and k=2, we have top next tokens A, C
             # and their probability P(A), P(C) but they are still not valid
@@ -369,10 +403,15 @@ class Seq2Seq(nn.Module):
 def nucleus_sample(logits: torch.Tensor, p: float) -> (List[int], List[float]):
     """
 
-    :rtype: Tuple
+    Args:
+        logits: (N, vocab_size)
+        p: float
+
+    Returns:
+        token_indices: (N, 1)
+        token_probs: (N, 1)
     """
     assert logits.dim() == 2, "expected a matrix (batch, vocab_size)"
-
     probs = F.softmax(logits, dim=-1)
     sorted_probs, sorted_indices = torch.sort(probs, descending=True)
     cumulative_sum = torch.cumsum(sorted_probs, dim=-1)
