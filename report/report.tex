@@ -1,0 +1,73 @@
+\documentclass{article}
+\usepackage[a4paper,top=2cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+\usepackage{array}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorlinks=false, allcolors=blue]{hyperref}
+
+\usepackage{natbib}
+\bibliographystyle{apalike}
+	
+\title{Implementation of Learning to Ask Paper}
+\author{Md Abdur Razzaq Riyadh}
+
+\begin{document}
+	\maketitle
+	
+	\section{Methodology of the Paper}
+%	1. Describe QG task. Show an example from the paper
+%	2. Seq2Seq task definition
+%	3. Describe their model: encoder, decoder, training
+%	4. Dataset
+	\subsection{Problem}
+	I have selected the paper titled `Learning to Ask: Neural Question Generation for Reading Comprehension' to implement \cite{du2017learning}. 
+	This paper tackles the task of question generation from text. 
+	More specifically, given an input sequence $x$, generate output sequence $y$ that is a question and the answer must be found in $x$.
+	Note that the length of $x$ and $y$ does not have to be equal. Figure \ref{fig:example} shows examples of this sequence to sequence problem.
+	
+	\begin{table}[h!]
+		\centering	
+		\begin{tabular}{ m{25em} m{10em}}
+			Sentence & Question \\
+			\hline
+			any person that hath occasion for the said engines may apply themselves to the patentee at his house near st thomas apostle london or to mr. nicholas wall at the workshoppe near saddlers wells at islington or to mr. william tillcar , turner , his agent at his house in woodtree next door to the sun tavern london & what tavern did william tillcar live adjacent to ? \\
+			\hline
+			in the ancient egyptian era of atenism , possibly the earliest recorded monotheistic religion , this deity was called aten , premised on being the one `` true '' supreme being and creator of the universe . & what was the first monotheistic religion ?
+			
+		\end{tabular}
+		\caption{Examples from the processed SQuAD Dataset}
+		\label{fig:example}
+	\end{table}
+	
+	\subsection{Methodology}
+	They have used RNN-based encoder-decoder architecture \citep{bahdanau2014neural},\citep{cho-etal-2014-learning} to conditionally generate the question. During decoding step, they have also used attention \citep{luong2015effective} to condition the output. 
+	
+	The encoder is a bi-directional RNN that produces sentence encoding from the entire $[x_1, x_2,..., x_s]$ sequence. The decoder is a uni-directional RNN that takes a single token $y_t$ and produce decoder representation. The attention score is calculated using \citet{luong2015effective} which determines by how much sentence tokens attends to the question token, $y_t$. The attention score is then used to calculate the context vector by multiplying the encoder representation. This is considered as taking the weighted average of encoder representation. Finally, to generate the next token's logits, decoder representation and context vector is concatenated and passed through linear layers. 
+	
+	The paper used the SQuAD dataset to process and prepare the dataset for question generation task. SQuAD have paragraphs and multiple questions and answers for each paragraphs. \cite{du2017learning} selected questions and the sentence from the paragraph containing the answer to create the parallel dataset they have used for this task.
+	
+	The paper reported experiments with and without pre-trained word embedding (Glove 840B, 300D), with and without paragraph on top of the sentence. I have reimplemented with and without word embedding experiment only.
+	
+	\section{Implementation Details and Challenges}
+%	1. Describe PyTorch and other libraries
+%	2. Where there wasn't enough information
+%	3. GPU, training time
+%	4. Loss unstability issue
+%	5. Perplexity Curves
+	
+	The paper originally was implemented using Lua and Torch. I have implemented in Python and PyTorch. For the dataset, I have used already pre-processed and tokenized data provided by the authors. 
+	
+	The primary challenge in the implementation was understanding the attention score equation \cite[see][eq 5]{du2017learning}. \citet{luong2015effective} was helpful in clarifying this issue. I also used \citet{pytorchFromScratch} whenever had any confusion regarding the implementation. 
+	
+	Another challenge was the unstable training because of the high learning rate. Most of the time, the binary cross entropy loss would start to increase from 10 to ~115 and jump around ~100. After cancelling and re-training multiple times would solve this problem and both loss and perplexity on the validation split would decrease gradually as expected.
+	
+	\section{Result Comparison}
+	1. not good, insert tables
+	\section{Personal Contribution}
+	1. describe nucleus sampling
+	2. implementation details
+	
+	\bibliography{ref}
+\end{document}

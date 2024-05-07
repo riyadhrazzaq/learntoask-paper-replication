@@ -1,0 +1,39 @@
+\begin{thebibliography}{}
+
+\bibitem[Bahdanau et~al., 2014]{bahdanau2014neural}
+Bahdanau, D., Cho, K., and Bengio, Y. (2014).
+\newblock Neural machine translation by jointly learning to align and
+  translate.
+\newblock {\em arXiv preprint arXiv:1409.0473}.
+
+\bibitem[Cho et~al., 2014]{cho-etal-2014-learning}
+Cho, K., van Merri{\"e}nboer, B., Gulcehre, C., Bahdanau, D., Bougares, F.,
+  Schwenk, H., and Bengio, Y. (2014).
+\newblock Learning phrase representations using {RNN} encoder{--}decoder for
+  statistical machine translation.
+\newblock In Moschitti, A., Pang, B., and Daelemans, W., editors, {\em
+  Proceedings of the 2014 Conference on Empirical Methods in Natural Language
+  Processing ({EMNLP})}, pages 1724--1734, Doha, Qatar. Association for
+  Computational Linguistics.
+
+\bibitem[Du et~al., 2017]{du2017learning}
+Du, X., Shao, J., and Cardie, C. (2017).
+\newblock Learning to ask: Neural question generation for reading
+  comprehension.
+\newblock {\em arXiv preprint arXiv:1705.00106}.
+
+\bibitem[Luong et~al., 2015]{luong2015effective}
+Luong, M.-T., Pham, H., and Manning, C.~D. (2015).
+\newblock Effective approaches to attention-based neural machine translation.
+\newblock {\em arXiv preprint arXiv:1508.04025}.
+
+\bibitem[Robertson, 2024]{pytorchFromScratch}
+Robertson, S. (2024).
+\newblock {N}{L}{P} {F}rom {S}cratch: {T}ranslation with a {S}equence to
+  {S}equence {N}etwork and {A}ttention {P}y{T}orch {T}utorials 2.3.0+cu121
+  documentation --- pytorch.org.
+\newblock
+  \url{https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html}.
+\newblock [Accessed 07-05-2024].
+
+\end{thebibliography}
